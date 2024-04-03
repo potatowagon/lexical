@@ -8,7 +8,6 @@
 import type {MenuRenderFn, MenuResolution} from './shared/LexicalMenu';
 
 import {useLexicalComposerContext} from '@lexical/react/LexicalComposerContext';
-import {calculateZoomLevel} from '@lexical/utils';
 import {
   COMMAND_PRIORITY_LOW,
   CommandListenerPriority,
@@ -47,7 +46,6 @@ export type LexicalContextMenuPluginProps<TOption extends MenuOption> = {
   ) => void;
   options: Array<TOption>;
   onClose?: () => void;
-  onWillOpen?: (event: MouseEvent) => void;
   onOpen?: (resolution: MenuResolution) => void;
   menuRenderFn: ContextMenuRenderFn<TOption>;
   anchorClassName?: string;
@@ -59,7 +57,6 @@ const PRE_PORTAL_DIV_SIZE = 1;
 
 export function LexicalContextMenuPlugin<TOption extends MenuOption>({
   options,
-  onWillOpen,
   onClose,
   onOpen,
   onSelectOption,
@@ -99,21 +96,17 @@ export function LexicalContextMenuPlugin<TOption extends MenuOption>({
   const handleContextMenu = useCallback(
     (event: MouseEvent) => {
       event.preventDefault();
-      if (onWillOpen != null) {
-        onWillOpen(event);
-      }
-      const zoom = calculateZoomLevel(event.target as Element);
       openNodeMenu({
         getRect: () =>
           new DOMRect(
-            event.clientX / zoom,
-            event.clientY / zoom,
+            event.clientX,
+            event.clientY,
             PRE_PORTAL_DIV_SIZE,
             PRE_PORTAL_DIV_SIZE,
           ),
       });
     },
-    [openNodeMenu, onWillOpen],
+    [openNodeMenu],
   );
 
   const handleClick = useCallback(

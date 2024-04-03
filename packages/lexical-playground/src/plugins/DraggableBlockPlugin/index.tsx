@@ -9,7 +9,7 @@ import './index.css';
 
 import {useLexicalComposerContext} from '@lexical/react/LexicalComposerContext';
 import {eventFiles} from '@lexical/rich-text';
-import {calculateZoomLevel, mergeRegister} from '@lexical/utils';
+import {mergeRegister} from '@lexical/utils';
 import {
   $getNearestNodeFromDOMNode,
   $getNodeByKey,
@@ -110,11 +110,9 @@ function getBlockElement(
       ];
 
       if (firstNodeRect && lastNodeRect) {
-        const firstNodeZoom = calculateZoomLevel(firstNode);
-        const lastNodeZoom = calculateZoomLevel(lastNode);
-        if (event.y / firstNodeZoom < firstNodeRect.top) {
+        if (event.y < firstNodeRect.top) {
           blockElem = firstNode;
-        } else if (event.y / lastNodeZoom > lastNodeRect.bottom) {
+        } else if (event.y > lastNodeRect.bottom) {
           blockElem = lastNode;
         }
 
@@ -133,10 +131,10 @@ function getBlockElement(
       if (elem === null) {
         break;
       }
-      const zoom = calculateZoomLevel(elem);
-      const point = new Point(event.x / zoom, event.y / zoom);
+      const point = new Point(event.x, event.y);
       const domRect = Rect.fromDOM(elem);
       const {marginTop, marginBottom} = getCollapsedMargins(elem);
+
       const rect = domRect.generateNewRect({
         bottom: domRect.bottom + marginBottom,
         left: anchorElementRect.left,
@@ -229,6 +227,7 @@ function setTargetLine(
     targetBlockElem.getBoundingClientRect();
   const {top: anchorTop, width: anchorWidth} =
     anchorElem.getBoundingClientRect();
+
   const {marginTop, marginBottom} = getCollapsedMargins(targetBlockElem);
   let lineTop = targetBlockElemTop;
   if (mouseY >= targetBlockElemTop) {
@@ -321,12 +320,7 @@ function useDraggableBlockMenu(
       if (targetBlockElem === null || targetLineElem === null) {
         return false;
       }
-      setTargetLine(
-        targetLineElem,
-        targetBlockElem,
-        pageY / calculateZoomLevel(target),
-        anchorElem,
-      );
+      setTargetLine(targetLineElem, targetBlockElem, pageY, anchorElem);
       // Prevent default event to be able to trigger onDrop events
       event.preventDefault();
       return true;
@@ -361,7 +355,7 @@ function useDraggableBlockMenu(
         return true;
       }
       const targetBlockElemTop = targetBlockElem.getBoundingClientRect().top;
-      if (pageY / calculateZoomLevel(target) >= targetBlockElemTop) {
+      if (pageY >= targetBlockElemTop) {
         targetNode.insertAfter(draggedNode);
       } else {
         targetNode.insertBefore(draggedNode);

@@ -89,13 +89,6 @@ const lexicalReactModuleExternals = lexicalReactModules.map((module) => {
   return external;
 });
 
-function resolveExternalEsm(id) {
-  if (/^prismjs\/components\/prism-/.test(id)) {
-    return `${id}.js`;
-  }
-  return id;
-}
-
 const externals = [
   'lexical',
   'prismjs/components/prism-core',
@@ -156,7 +149,7 @@ Object.keys(wwwMappings).forEach((mapping) => {
 });
 
 function getExtension(format) {
-  return `.${format === 'esm' ? 'm' : ''}js`;
+  return `${format === 'esm' ? '.esm' : ''}.js`;
 }
 
 async function build(name, inputFile, outputPath, outputFile, isProd, format) {
@@ -284,7 +277,6 @@ async function build(name, inputFile, outputPath, outputFile, isProd, format) {
     format, // change between es and cjs modules
     freeze: false,
     interop: format === 'esm' ? 'esModule' : false,
-    paths: format === 'esm' ? resolveExternalEsm : undefined,
   };
   const result = await rollup.rollup(inputOptions);
   const {output} = await result.write(outputOptions);
@@ -620,29 +612,17 @@ async function moveTSDeclarationFilesIntoDist(packageName, outputPath) {
   await fs.copy(`./.ts-temp/${packageName}/src`, outputPath);
 }
 
-function forkModuleContent(
-  {devFileName, exports, outputFileName, prodFileName},
-  target,
-) {
+function buildForkModule(outputPath, outputFileName, format, exports) {
   const lines = [getComment()];
-  if (target === 'cjs') {
+  const extension = getExtension(format);
+  const devFileName = `./${outputFileName}.dev${extension}`;
+  const prodFileName = `./${outputFileName}.prod${extension}`;
+  if (format === 'esm') {
     lines.push(
-      `'use strict'`,
-      `const ${outputFileName} = process.env.NODE_ENV === 'development' ? require('${devFileName}') : require('${prodFileName}');`,
-      `module.exports = ${outputFileName};`,
+      `import * as modDev from '${devFileName}';`,
+      `import * as modProd from '${prodFileName}';`,
+      `const mod = process.env.NODE_ENV === 'development' ? modDev : modProd;`,
     );
-  } else {
-    if (target === 'esm') {
-      lines.push(
-        `import * as modDev from '${devFileName}';`,
-        `import * as modProd from '${prodFileName}';`,
-        `const mod = process.env.NODE_ENV === 'development' ? modDev : modProd;`,
-      );
-    } else if (target === 'node') {
-      lines.push(
-        `const mod = await (process.env.NODE_ENV === 'development' ? import('${devFileName}') : import('${prodFileName}'));`,
-      );
-    }
     for (const name of exports) {
       lines.push(
         name === 'default'
@@ -650,27 +630,18 @@ function forkModuleContent(
           : `export const ${name} = mod.${name};`,
       );
     }
-  }
-  return lines.join('\n');
-}
-
-function buildForkModules(outputPath, outputFileName, format, exports) {
-  const extension = getExtension(format);
-  const devFileName = `./${outputFileName}.dev${extension}`;
-  const prodFileName = `./${outputFileName}.prod${extension}`;
-  const opts = {devFileName, exports, outputFileName, prodFileName};
-  fs.outputFileSync(
-    path.resolve(path.join(`${outputPath}${outputFileName}${extension}`)),
-    forkModuleContent(opts, format),
-  );
-  if (format === 'esm') {
-    fs.outputFileSync(
-      path.resolve(
-        path.join(`${outputPath}${outputFileName}.node${extension}`),
-      ),
-      forkModuleContent(opts, 'node'),
+  } else {
+    lines.push(
+      `'use strict'`,
+      `const ${outputFileName} = process.env.NODE_ENV === 'development' ? require('${devFileName}') : require('${prodFileName}');`,
+      `module.exports = ${outputFileName};`,
     );
   }
+  const fileContent = lines.join('\n');
+  fs.outputFileSync(
+    path.resolve(path.join(`${outputPath}${outputFileName}${extension}`)),
+    fileContent,
+  );
 }
 
 async function buildAll() {
@@ -683,10 +654,6 @@ async function buildAll() {
 
     for (const module of modules) {
       for (const format of ['cjs', 'esm']) {
-        if (isWWW && format === 'esm') {
-          break;
-        }
-
         const {sourceFileName, outputFileName} = module;
         let inputFile = path.resolve(
           path.join(`${sourcePath}${sourceFileName}`),
@@ -722,7 +689,7 @@ async function buildAll() {
             false,
             format,
           );
-          buildForkModules(outputPath, outputFileName, format, exports);
+          buildForkModule(outputPath, outputFileName, format, exports);
         }
       }
     }

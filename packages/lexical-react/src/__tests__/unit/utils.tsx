@@ -6,6 +6,8 @@
  *
  */
 
+import {useLexicalComposerContext} from '@lexical/react/src/LexicalComposerContext';
+import LexicalErrorBoundary from '@lexical/react/src/LexicalErrorBoundary';
 import {UserState} from '@lexical/yjs/src/index';
 import {LexicalEditor} from 'lexical';
 import * as React from 'react';
@@ -16,9 +18,7 @@ import * as Y from 'yjs';
 import {useCollaborationContext} from '../../LexicalCollaborationContext';
 import {CollaborationPlugin} from '../../LexicalCollaborationPlugin';
 import {LexicalComposer} from '../../LexicalComposer';
-import {useLexicalComposerContext} from '../../LexicalComposerContext';
 import {ContentEditable} from '../../LexicalContentEditable';
-import LexicalErrorBoundary from '../../LexicalErrorBoundary';
 import {RichTextPlugin} from '../../LexicalRichTextPlugin';
 
 function Editor({doc, provider, setEditor, awarenessData}) {

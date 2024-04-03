@@ -15,11 +15,11 @@ import {OverflowNode} from '@lexical/overflow';
 import {
   InitialConfigType,
   LexicalComposer,
-} from '@lexical/react/LexicalComposer';
+} from '@lexical/react/src/LexicalComposer';
 import {
   createLexicalComposerContext,
   LexicalComposerContext,
-} from '@lexical/react/LexicalComposerContext';
+} from '@lexical/react/src/LexicalComposerContext';
 import {HeadingNode, QuoteNode} from '@lexical/rich-text';
 import {TableCellNode, TableNode, TableRowNode} from '@lexical/table';
 import {expect} from '@playwright/test';

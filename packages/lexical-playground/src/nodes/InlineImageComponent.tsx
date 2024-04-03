@@ -35,6 +35,7 @@ import * as React from 'react';
 import {Suspense, useCallback, useEffect, useRef, useState} from 'react';
 
 import useModal from '../hooks/useModal';
+import FloatingTextFormatToolbarPlugin from '../plugins/FloatingTextFormatToolbarPlugin/index';
 import LinkPlugin from '../plugins/LinkPlugin';
 import Button from '../ui/Button';
 import ContentEditable from '../ui/ContentEditable';
@@ -386,6 +387,7 @@ export default function InlineImageComponent({
             <LexicalNestedComposer initialEditor={caption}>
               <AutoFocusPlugin />
               <LinkPlugin />
+              <FloatingTextFormatToolbarPlugin />
               <RichTextPlugin
                 contentEditable={
                   <ContentEditable className="InlineImageNode__contentEditable" />

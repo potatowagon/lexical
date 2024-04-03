@@ -22,7 +22,6 @@ import {
   getDOMCellFromTarget,
   TableCellNode,
 } from '@lexical/table';
-import {calculateZoomLevel} from '@lexical/utils';
 import {
   $getNearestNodeFromDOMNode,
   $getSelection,
@@ -261,11 +260,10 @@ function TableCellResizer({editor}: {editor: LexicalEditor}): JSX.Element {
           if (activeCell === null) {
             return;
           }
-          const zoom = calculateZoomLevel(event.target as Element);
 
           if (isHeightChanging(direction)) {
             const height = activeCell.elem.getBoundingClientRect().height;
-            const heightChange = Math.abs(event.clientY - y) / zoom;
+            const heightChange = Math.abs(event.clientY - y);
 
             const isShrinking = direction === 'bottom' && y > event.clientY;
 
@@ -281,7 +279,7 @@ function TableCellResizer({editor}: {editor: LexicalEditor}): JSX.Element {
             width -=
               parseFloat(computedStyle.paddingLeft) +
               parseFloat(computedStyle.paddingRight);
-            const widthChange = Math.abs(event.clientX - x) / zoom;
+            const widthChange = Math.abs(event.clientX - x);
 
             const isShrinking = direction === 'right' && x > event.clientX;
 
@@ -328,7 +326,6 @@ function TableCellResizer({editor}: {editor: LexicalEditor}): JSX.Element {
     if (activeCell) {
       const {height, width, top, left} =
         activeCell.elem.getBoundingClientRect();
-      const zoom = calculateZoomLevel(activeCell.elem);
 
       const styles = {
         bottom: {
@@ -357,7 +354,7 @@ function TableCellResizer({editor}: {editor: LexicalEditor}): JSX.Element {
             window.pageXOffset + tableRect.left
           }px`;
           styles[draggingDirection].top = `${
-            window.pageYOffset + mouseCurrentPos.y / zoom
+            window.pageYOffset + mouseCurrentPos.y
           }px`;
           styles[draggingDirection].height = '3px';
           styles[draggingDirection].width = `${tableRect.width}px`;
@@ -366,7 +363,7 @@ function TableCellResizer({editor}: {editor: LexicalEditor}): JSX.Element {
             window.pageYOffset + tableRect.top
           }px`;
           styles[draggingDirection].left = `${
-            window.pageXOffset + mouseCurrentPos.x / zoom
+            window.pageXOffset + mouseCurrentPos.x
           }px`;
           styles[draggingDirection].width = '3px';
           styles[draggingDirection].height = `${tableRect.height}px`;

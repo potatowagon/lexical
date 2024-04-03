@@ -25,7 +25,6 @@ import {
   LexicalEditor,
   LexicalNode,
 } from 'lexical';
-import {IS_FIREFOX} from 'shared/environment';
 import invariant from 'shared/invariant';
 import normalizeClassNames from 'shared/normalizeClassNames';
 
@@ -524,21 +523,4 @@ export function $insertFirst(parent: ElementNode, node: LexicalNode): void {
   } else {
     parent.append(node);
   }
-}
-
-/**
- * Calculates the zoom level of an element as a result of using
- * css zoom property.
- * @param element
- */
-export function calculateZoomLevel(element: Element | null): number {
-  if (IS_FIREFOX) {
-    return 1;
-  }
-  let zoom = 1;
-  while (element) {
-    zoom *= Number(window.getComputedStyle(element).getPropertyValue('zoom'));
-    element = element.parentElement;
-  }
-  return zoom;
 }

@@ -103,11 +103,6 @@ export function syncYjsChangesToLexical(
         const event = events[i];
         syncEvent(binding, event);
       }
-      // If there was a collision on the top level paragraph
-      // we need to re-add a paragraph
-      if ($getRoot().getChildrenSize() === 0) {
-        $getRoot().append($createParagraphNode());
-      }
 
       const selection = $getSelection();
 
@@ -147,6 +142,14 @@ export function syncYjsChangesToLexical(
               syncLocalCursorPosition(binding, provider);
 
               if (doesSelectionNeedRecovering(selection)) {
+                const root = $getRoot();
+
+                // If there was a collision on the top level paragraph
+                // we need to re-add a paragraph
+                if (root.getChildrenSize() === 0) {
+                  root.append($createParagraphNode());
+                }
+
                 // Fallback
                 $getRoot().selectEnd();
               }

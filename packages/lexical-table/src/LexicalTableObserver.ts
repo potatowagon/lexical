@@ -24,6 +24,7 @@ import {
   $setSelection,
   SELECTION_CHANGE_COMMAND,
 } from 'lexical';
+import {CAN_USE_DOM} from 'shared/canUseDOM';
 import invariant from 'shared/invariant';
 
 import {$isTableCellNode} from './LexicalTableCellNode';
@@ -33,12 +34,7 @@ import {
   $createTableSelection,
   $isTableSelection,
 } from './LexicalTableSelection';
-import {
-  $findTableNode,
-  $updateDOMForSelection,
-  getDOMSelection,
-  getTable,
-} from './LexicalTableSelectionHelpers';
+import {$updateDOMForSelection, getTable} from './LexicalTableSelectionHelpers';
 
 export type TableDOMCell = {
   elem: HTMLElement;
@@ -55,6 +51,9 @@ export type TableDOMTable = {
   columns: number;
   rows: number;
 };
+
+const getDOMSelection = (targetWindow: Window | null): Selection | null =>
+  CAN_USE_DOM ? (targetWindow || window).getSelection() : null;
 
 export class TableObserver {
   focusX: number;
@@ -284,8 +283,7 @@ export class TableObserver {
         if (
           this.tableSelection != null &&
           this.anchorCellNodeKey != null &&
-          $isTableCellNode(focusTableCellNode) &&
-          tableNode.is($findTableNode(focusTableCellNode))
+          $isTableCellNode(focusTableCellNode)
         ) {
           const focusNodeKey = focusTableCellNode.getKey();
 

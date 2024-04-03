@@ -12,7 +12,7 @@ import {HeadingNode, QuoteNode, registerRichText} from '@lexical/rich-text';
 import {mergeRegister} from '@lexical/utils';
 import {createEditor} from 'lexical';
 
-import prepopulatedRichText from './prepopulatedRichText.mjs';
+import prepopulatedRichText from './prepopulatedRichText.esm.js';
 
 const editorRef = document.getElementById('lexical-editor');
 const stateRef = document.getElementById('lexical-state');

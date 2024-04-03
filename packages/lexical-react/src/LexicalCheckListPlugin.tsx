@@ -18,7 +18,6 @@ import {
 import {useLexicalComposerContext} from '@lexical/react/LexicalComposerContext';
 import {
   $findMatchingParent,
-  calculateZoomLevel,
   isHTMLElement,
   mergeRegister,
 } from '@lexical/utils';
@@ -186,8 +185,9 @@ function handleCheckItemEvent(event: PointerEvent, callback: () => void) {
     return;
   }
 
+  const pageX = event.pageX;
   const rect = target.getBoundingClientRect();
-  const pageX = event.pageX / calculateZoomLevel(target);
+
   if (
     target.dir === 'rtl'
       ? pageX < rect.right && pageX > rect.right - 20

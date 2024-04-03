@@ -8,7 +8,6 @@
 
 import './ColorPicker.css';
 
-import {calculateZoomLevel} from '@lexical/utils';
 import {useEffect, useMemo, useRef, useState} from 'react';
 import * as React from 'react';
 
@@ -178,9 +177,9 @@ function MoveWrapper({className, style, onChange, children}: MoveWrapperProps) {
     if (divRef.current) {
       const {current: div} = divRef;
       const {width, height, left, top} = div.getBoundingClientRect();
-      const zoom = calculateZoomLevel(div);
-      const x = clamp(e.clientX / zoom - left, width, 0);
-      const y = clamp(e.clientY / zoom - top, height, 0);
+
+      const x = clamp(e.clientX - left, width, 0);
+      const y = clamp(e.clientY - top, height, 0);
 
       onChange({x, y});
     }
