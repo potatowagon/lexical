@@ -9,6 +9,7 @@
 'use strict';
 
 const fs = require('fs-extra');
+const glob = require('glob');
 
 const packages = {
   '@lexical/clipboard': 'lexical-clipboard',
@@ -52,10 +53,38 @@ function updateVersion() {
       spaces: 2,
     });
   });
+  // update dependencies in the examples
+  glob.sync('./examples/*/package.json').forEach((fn) => {
+    const packageJSON = fs.readJsonSync(fn);
+    packageJSON.version = version;
+    updateDependencies(packageJSON, version);
+    fs.writeJsonSync(fn, packageJSON, {
+      spaces: 2,
+    });
+  });
 }
 
 function withEsmExtension(fileName) {
-  return fileName.replace(/\.js$/, '.esm.js');
+  return fileName.replace(/\.js$/, '.mjs');
+}
+
+function withNodeEsmExtension(fileName) {
+  return fileName.replace(/\.js$/, '.node.mjs');
+}
+
+function exportEntry(file, types) {
+  // Bundlers such as webpack require 'types' to be first and 'default' to be
+  // last per #5731. Keys are in descending priority order.
+  return {
+    /* eslint-disable sort-keys-fix/sort-keys-fix */
+    import: {
+      types: `./${types}`,
+      node: `./${withNodeEsmExtension(file)}`,
+      default: `./${withEsmExtension(file)}`,
+    },
+    require: {types: `./${types}`, default: `./${file}`},
+    /* eslint-enable sort-keys-fix/sort-keys-fix */
+  };
 }
 
 function updateModule(packageJSON, pkg) {
@@ -64,49 +93,53 @@ function updateModule(packageJSON, pkg) {
   }
   if (packageJSON.main) {
     packageJSON.module = withEsmExtension(packageJSON.main);
+    packageJSON.exports = {
+      '.': exportEntry(packageJSON.main, packageJSON.types || 'index.d.ts'),
+    };
   } else if (fs.existsSync(`./packages/${pkg}/dist`)) {
     const exports = {};
     for (const file of fs.readdirSync(`./packages/${pkg}/dist`)) {
       if (/^[^.]+\.js$/.test(file)) {
+        const entry = exportEntry(file, file.replace(/\.js$/, '.d.ts'));
         // support for import "@lexical/react/LexicalComposer"
-        exports[`./${file.replace(/\.js$/, '')}`] = {
-          import: {
-            default: `./${withEsmExtension(file)}`,
-            types: `./${file.replace(/\.js$/, '.d.ts')}`,
-          },
-          require: `./${file}`,
-        };
+        exports[`./${file.replace(/\.js$/, '')}`] = entry;
         // support for import "@lexical/react/LexicalComposer.js"
         // @mdxeditor/editor uses this at least as of 2.13.1
-        exports[`./${file}`] = {
-          import: {
-            default: `./${withEsmExtension(file)}`,
-            types: `./${file.replace(/\.js$/, '.d.ts')}`,
-          },
-          require: `./${file}`,
-        };
+        exports[`./${file}`] = entry;
       }
     }
     packageJSON.exports = exports;
   }
 }
 
+function sortDependencies(packageJSON, key, deps) {
+  const entries = Object.entries(deps);
+  if (entries.length === 0) {
+    delete packageJSON[key];
+  } else {
+    packageJSON[key] = Object.fromEntries(
+      entries.sort((a, b) => a[0].localeCompare(b[0])),
+    );
+  }
+}
+
 function updateDependencies(packageJSON, version) {
-  const {dependencies, peerDependencies} = packageJSON;
-  if (dependencies !== undefined) {
-    Object.keys(dependencies).forEach((dep) => {
-      if (packages[dep] !== undefined) {
-        dependencies[dep] = version;
-      }
-    });
-  }
-  if (peerDependencies !== undefined) {
-    Object.keys(peerDependencies).forEach((peerDep) => {
-      if (packages[peerDep] !== undefined) {
-        peerDependencies[peerDep] = version;
-      }
-    });
-  }
+  const {dependencies = {}, peerDependencies = {}} = packageJSON;
+  Object.keys(dependencies).forEach((dep) => {
+    if (packages[dep] !== undefined) {
+      dependencies[dep] = version;
+    }
+  });
+  // Move peerDependencies on lexical monorepo packages to dependencies
+  // per #5783
+  Object.keys(peerDependencies).forEach((peerDep) => {
+    if (packages[peerDep] !== undefined) {
+      delete peerDependencies[peerDep];
+      dependencies[peerDep] = version;
+    }
+  });
+  sortDependencies(packageJSON, 'dependencies', dependencies);
+  sortDependencies(packageJSON, 'peerDependencies', peerDependencies);
 }
 
 updateVersion();
