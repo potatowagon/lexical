@@ -6,40 +6,38 @@
  *
  */
 
-import type {
-  BaseSelection,
-  DOMChildConversion,
-  DOMConversion,
-  DOMConversionFn,
-  EditorDOMRenderConfig,
-  ElementFormatType,
-  LexicalEditor,
-  LexicalNode,
-} from 'lexical';
-
 import invariant from '@lexical/internal/invariant';
 import {$sliceSelectedTextNodeContent} from '@lexical/selection';
 import {
   $assumeActiveEditor,
   $createLineBreakNode,
   $createParagraphNode,
+  $getDocument,
   $getEditor,
   $getEditorDOMRenderConfig,
   $getRoot,
-  $getSlotFrame,
+  $getSelectionSlotFrame,
   $isBlockElementNode,
   $isElementNode,
+  $isLineBreakNode,
   $isNodeSelection,
-  $isRangeSelection,
   $isRootOrShadowRoot,
   $isTextNode,
   ArtificialNode__DO_NOT_USE,
-  ElementNode,
+  type BaseSelection,
+  type DOMChildConversion,
+  type DOMConversion,
+  type DOMConversionFn,
+  type EditorDOMRenderConfig,
+  type ElementFormatType,
+  type ElementNode,
   isBlockDomNode,
   isDocumentFragment,
   isDOMDocumentNode,
   isHTMLElement,
   isInlineDomNode,
+  type LexicalEditor,
+  type LexicalNode,
 } from 'lexical';
 
 import {contextValue} from './ContextRecord';
@@ -137,6 +135,7 @@ export type {
   DOMRenderMatchConfig,
   NodeMatch,
   RenderContextReader,
+  RenderStateConfig,
 } from './types';
 
 const IGNORE_TAGS = new Set(['STYLE', 'SCRIPT']);
@@ -194,13 +193,14 @@ export function $generateDOMFromNodes<T extends HTMLElement | DocumentFragment>(
     const root = $getRoot();
     const domConfig = $getSessionDOMRenderConfig(editor);
 
-    // A RangeSelection wholly inside a slot subtree never includes its host
+    // A selection wholly inside a slot subtree never includes its host
     // (slots are shadow-root isolated), so a root-children walk would miss
     // the selected nodes entirely and export an empty payload. Walk the
     // selection's slot frame instead; outside slots this is the root.
-    const slotFrame = $isRangeSelection(selection)
-      ? $getSlotFrame(selection.anchor.getNode())
-      : null;
+    // $generateJSONFromSelectedNodes in @lexical/clipboard redirects the
+    // JSON channel through the same frame, so the two clipboard payloads
+    // stay in agreement.
+    const slotFrame = $getSelectionSlotFrame(selection);
     const parentElementAppend = container.append.bind(container);
     for (const topLevelNode of ($isElementNode(slotFrame)
       ? slotFrame
@@ -270,8 +270,48 @@ export function $generateHtmlFromNodes(
   // If the caller is in a legacy `editorState.read(cb)` scope (no active editor),
   // establish one via internal API.
   $assumeActiveEditor(editor);
-  return $generateDOMFromNodes(document.createElement('div'), selection, editor)
-    .innerHTML;
+  return $generateDOMFromNodes(
+    $getDocument().createElement('div'),
+    selection,
+    editor,
+  ).innerHTML;
+}
+
+/**
+ * A `<br>` that is the last (or only) child of a block element is not rendered
+ * by browsers, so both HTML importers drop it — see `isLastChildInBlockNode`
+ * and `isOnlyChildInBlockNode`. The reconciler works around that in the live
+ * DOM by appending a managed terminator `<br>` after a trailing LineBreakNode
+ * (`ElementDOMSlot.insertManagedLineBreak`); exported HTML had no equivalent,
+ * so `<p>a<br></p>` rendered as a single line and re-imported without the
+ * LineBreakNode at all.
+ *
+ * Emit the same terminator here, marked with the same
+ * `data-lexical-managed-linebreak` attribute the reconciler uses, so exported
+ * HTML and a scrape of the live DOM describe a trailing break identically and
+ * a consumer can tell the terminator apart from authored content. The
+ * importers drop it and keep the authored break, which makes the export/import
+ * round trip lossless without relaxing the rendering-faithful import rules —
+ * they match on position, so the marker is metadata rather than load-bearing
+ * and a sanitizer that strips it changes nothing.
+ */
+function $appendTerminatingLineBreak(
+  element: HTMLElement | DocumentFragment,
+  lastIncludedChild: null | LexicalNode,
+): void {
+  const lastChild = element.lastChild;
+  if (
+    $isLineBreakNode(lastIncludedChild) &&
+    isHTMLElement(element) &&
+    isBlockDomNode(element) &&
+    lastChild !== null &&
+    lastChild.nodeName === 'BR'
+  ) {
+    const br = $getDocument().createElement('br');
+    // Same marker as ElementDOMSlot.insertManagedLineBreak writes in the live DOM.
+    br.setAttribute('data-lexical-managed-linebreak', 'true');
+    element.append(br);
+  }
 }
 
 function $appendNodesToHTML(
@@ -299,7 +339,7 @@ function $appendNodesToHTML(
     return false;
   }
 
-  const fragment = document.createDocumentFragment();
+  const fragment = $getDocument().createDocumentFragment();
   const children = $getChildNodes
     ? $getChildNodes()
     : $isElementNode(target)
@@ -319,6 +359,7 @@ function $appendNodesToHTML(
       ? null
       : selection;
   const fragmentAppend = fragment.append.bind(fragment);
+  let lastIncludedChild: null | LexicalNode = null;
   for (const childNode of children) {
     const shouldIncludeChild = $appendNodesToHTML(
       editor,
@@ -327,6 +368,10 @@ function $appendNodesToHTML(
       childSelection,
       domConfig,
     );
+
+    if (shouldIncludeChild) {
+      lastIncludedChild = childNode;
+    }
 
     if (
       !shouldInclude &&
@@ -350,15 +395,27 @@ function $appendNodesToHTML(
       } else {
         element.append(fragment);
       }
+      $appendTerminatingLineBreak(element, lastIncludedChild);
     }
-    parentElementAppend(element);
-
-    if (after) {
-      const newElement = after.call(target, element);
-      if (newElement) {
-        if (isDocumentFragment(element)) {
+    if (isDocumentFragment(element)) {
+      // Resolve `after` before handing the fragment to the parent: appending a
+      // DocumentFragment moves its children out and leaves it empty, so a
+      // replacement written into it afterwards would land in a detached,
+      // already-drained fragment and never reach the output.
+      if (after) {
+        const newElement = after.call(target, element);
+        if (newElement) {
           element.replaceChildren(newElement);
-        } else {
+        }
+      }
+      parentElementAppend(element);
+    } else {
+      // An HTMLElement has to be in the tree first so replaceWith() can swap
+      // it in place.
+      parentElementAppend(element);
+      if (after) {
+        const newElement = after.call(target, element);
+        if (newElement) {
           element.replaceWith(newElement);
         }
       }

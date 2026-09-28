@@ -6,12 +6,10 @@
  *
  */
 
-import type {LexicalComposerContextType} from '@lexical/react/LexicalComposerContext';
-import type {JSX} from 'react';
-
 import {
   createLexicalComposerContext,
   LexicalComposerContext,
+  type LexicalComposerContextType,
 } from '@lexical/react/LexicalComposerContext';
 import {
   $createParagraphNode,
@@ -19,18 +17,18 @@ import {
   $getSelection,
   CAN_USE_DOM,
   createEditor,
-  EditorState,
-  EditorThemeClasses,
+  type EditorState,
+  type EditorThemeClasses,
   getActiveElement,
   HISTORY_MERGE_TAG,
-  HTMLConfig,
-  Klass,
-  LexicalEditor,
-  LexicalNode,
-  LexicalNodeReplacement,
+  type HTMLConfig,
+  type Klass,
+  type LexicalEditor,
+  type LexicalNode,
+  type LexicalNodeReplacement,
 } from 'lexical';
 import * as React from 'react';
-import {useMemo} from 'react';
+import {type JSX, useMemo} from 'react';
 
 import useLayoutEffect from './shared/useLayoutEffect';
 
@@ -118,6 +116,12 @@ type Props = React.PropsWithChildren<{
  * {@link LexicalExtensionComposer} instead; see the
  * [React extensions guide](https://lexical.dev/docs/extensions/react).
  *
+ * @deprecated Superseded by `LexicalExtensionComposer` from
+ * `@lexical/react/LexicalExtensionComposer`, and expected to be removed in a
+ * future major release. `LexicalComposer` cannot accept extensions, so any
+ * feature delivered as an extension is unreachable from an editor built here.
+ * See the [React extensions guide](https://lexical.dev/docs/extensions/react)
+ * for the migration, which is usually a two-line change.
  * @returns A context provider wrapping `children`.
  */
 export function LexicalComposer({initialConfig, children}: Props): JSX.Element {

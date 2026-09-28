@@ -6,21 +6,12 @@
  *
  */
 
-import type {
-  BaseSelection,
-  DecoratorNode,
-  ElementNode,
-  LexicalEditor,
-  LexicalNode,
-  ParagraphNode,
-  RangeSelection,
-  TextNode,
-} from 'lexical';
+import type {LexicalCommandLog} from './useLexicalCommandsLog';
 
 import {$generateHtmlFromNodes} from '@lexical/html';
-import {$isLinkNode, LinkNode} from '@lexical/link';
+import {$isLinkNode, type LinkNode} from '@lexical/link';
 import {$isMarkNode} from '@lexical/mark';
-import {$isTableSelection, TableSelection} from '@lexical/table';
+import {$isTableSelection, type TableSelection} from '@lexical/table';
 import {
   $getRoot,
   $getSelection,
@@ -34,25 +25,39 @@ import {
   $isParagraphNode,
   $isRangeSelection,
   $isTextNode,
+  type BaseSelection,
+  type DecoratorNode,
+  type ElementNode,
+  type LexicalEditor,
+  type LexicalNode,
+  type ParagraphNode,
+  type RangeSelection,
+  type TextNode,
 } from 'lexical';
-
-import {LexicalCommandLog} from './useLexicalCommandsLog';
 
 export type CustomPrintNodeFn = (
   node: LexicalNode,
   obfuscateText?: boolean,
 ) => string | undefined;
 
+// The Object.freeze calls are annotated by hand and the RegExp is built by a
+// function declared side-effect free (so the build annotates the call): a
+// module-scope call is a side effect to bundlers, which would pin these
+// tables into every bundle that imports this module.
 const NON_SINGLE_WIDTH_CHARS_REPLACEMENT: Readonly<Record<string, string>> =
-  Object.freeze({
+  /* @__PURE__ */ Object.freeze({
     '\t': '\\t',
     '\n': '\\n',
   });
-const NON_SINGLE_WIDTH_CHARS_REGEX = new RegExp(
-  Object.keys(NON_SINGLE_WIDTH_CHARS_REPLACEMENT).join('|'),
-  'g',
-);
-const SYMBOLS: Record<string, string> = Object.freeze({
+/** @__NO_SIDE_EFFECTS__ */
+function createNonSingleWidthCharsRegExp(): RegExp {
+  return new RegExp(
+    Object.keys(NON_SINGLE_WIDTH_CHARS_REPLACEMENT).join('|'),
+    'g',
+  );
+}
+const NON_SINGLE_WIDTH_CHARS_REGEX = createNonSingleWidthCharsRegExp();
+const SYMBOLS: Record<string, string> = /* @__PURE__ */ Object.freeze({
   ancestorHasNextSibling: '|',
   ancestorIsLastChild: ' ',
   hasNextSibling: '├',
@@ -588,6 +593,7 @@ function $printSelectedCharsLine({
 }
 
 function printPrettyHTML(str: string) {
+  // eslint-disable-next-line no-restricted-syntax
   const div = document.createElement('div');
   div.innerHTML = str.trim();
   return prettifyHTML(div, 0).innerHTML;
@@ -599,10 +605,12 @@ function prettifyHTML(node: Element, level: number) {
   let textNode;
 
   for (let i = 0; i < node.children.length; i++) {
+    // eslint-disable-next-line no-restricted-syntax
     textNode = document.createTextNode('\n' + indentBefore);
     node.insertBefore(textNode, node.children[i]);
     prettifyHTML(node.children[i], level);
     if (node.lastElementChild === node.children[i]) {
+      // eslint-disable-next-line no-restricted-syntax
       textNode = document.createTextNode('\n' + indentAfter);
       node.appendChild(textNode);
     }

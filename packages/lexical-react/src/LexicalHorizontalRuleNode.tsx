@@ -6,9 +6,6 @@
  *
  */
 
-import type {DOMConversionMap, DOMConversionOutput, NodeKey} from 'lexical';
-import type {JSX} from 'react';
-
 import {
   $isHorizontalRuleNode,
   HorizontalRuleNode as BaseHorizontalRuleNode,
@@ -22,12 +19,14 @@ import {
   addClassNamesToElement,
   CLICK_COMMAND,
   COMMAND_PRIORITY_LOW,
+  type DOMConversionOutput,
   getComposedEventTarget,
   mergeRegister,
+  type NodeKey,
   removeClassNamesFromElement,
 } from 'lexical';
 import * as React from 'react';
-import {useEffect} from 'react';
+import {type JSX, useEffect} from 'react';
 
 export {
   $isHorizontalRuleNode,
@@ -82,27 +81,20 @@ function HorizontalRuleComponent({nodeKey}: {nodeKey: NodeKey}) {
  * @deprecated A pure Lexical implementation is available in `@lexical/extension` as HorizontalRuleExtension
  */
 export class HorizontalRuleNode extends BaseHorizontalRuleNode {
-  static getType(): string {
-    return 'horizontalrule';
-  }
-
-  static clone(node: HorizontalRuleNode): HorizontalRuleNode {
-    return new HorizontalRuleNode(node.__key);
-  }
-
-  static importJSON(
-    serializedNode: SerializedHorizontalRuleNode,
-  ): HorizontalRuleNode {
-    return $createHorizontalRuleNode().updateFromJSON(serializedNode);
-  }
-
-  static importDOM(): DOMConversionMap | null {
-    return {
-      hr: () => ({
-        conversion: $convertHorizontalRuleElement,
-        priority: 0,
-      }),
-    };
+  $config() {
+    // Named rather than left to the runtime default, for the reason the base
+    // node names its own: it is what carries this config on the record the
+    // composed serialization types walk. The shape still matches the base
+    // node's, whose 'horizontalrule' type this deprecated subclass reuses.
+    return this.config('horizontalrule', {
+      extends: BaseHorizontalRuleNode,
+      importDOM: {
+        hr: () => ({
+          conversion: $convertHorizontalRuleElement,
+          priority: 0,
+        }),
+      },
+    });
   }
 
   decorate(): JSX.Element {

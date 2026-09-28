@@ -6,8 +6,6 @@
  *
  */
 
-import type {JSX} from 'react';
-
 import {CodeHighlightNode, CodeNode} from '@lexical/code';
 import {HashtagNode} from '@lexical/hashtag';
 import {createHeadlessEditor} from '@lexical/headless';
@@ -16,7 +14,7 @@ import {ListItemNode, ListNode} from '@lexical/list';
 import {MarkNode} from '@lexical/mark';
 import {OverflowNode} from '@lexical/overflow';
 import {
-  InitialConfigType,
+  type InitialConfigType,
   LexicalComposer,
 } from '@lexical/react/LexicalComposer';
 import {
@@ -30,29 +28,44 @@ import {
   $create,
   $isRangeSelection,
   createEditor,
-  CreateEditorArgs,
+  type CreateEditorArgs,
   DecoratorNode,
-  EditorState,
-  EditorThemeClasses,
+  type DOMConversion,
+  type DOMConversionOutput,
+  type EditorState,
+  type EditorThemeClasses,
   ElementNode,
-  HTMLConfig,
-  Klass,
-  LexicalEditor,
-  LexicalNode,
-  LexicalNodeReplacement,
-  LexicalUpdateJSON,
-  RangeSelection,
+  type HTMLConfig,
+  type Klass,
+  type LexicalEditor,
+  type LexicalNode,
+  type LexicalNodeReplacement,
+  type LexicalUpdateJSON,
+  type RangeSelection,
   resetRandomKey,
-  SerializedElementNode,
-  SerializedLexicalNode,
-  SerializedTextNode,
-  Spread,
+  type SerializedElementNode,
+  type SerializedLexicalNode,
+  type SerializedTextNode,
+  type Spread,
   TextNode,
 } from 'lexical';
 import * as React from 'react';
-import {act, createRef} from 'react';
+import {act, createRef, type JSX} from 'react';
 import {createRoot} from 'react-dom/client';
 import {afterEach, assert, beforeEach, expect} from 'vitest';
+
+import {
+  $applyJSONSetters,
+  $generatedExportJSON,
+  $walkExportJSON,
+  $walkJSONSetters,
+  getGeneratedJSON,
+} from '../../LexicalUtils';
+
+// The generated implementations a class runs, bound to its own schema by its
+// record — what a package's generated-code test asks about, since the module
+// it imports exports the factory, not the functions.
+export {getGeneratedJSON};
 
 const prettierConfig = prettier.resolveConfig(__filename);
 
@@ -127,7 +140,7 @@ export function initializeUnitTest(
       testEnv.editor = useLexicalEditor(ref);
       const context = createLexicalComposerContext(
         null,
-        editorConfig?.theme ?? {},
+        editorConfig?.theme ?? {tableScrollableWrapper: ''},
       );
       return (
         <LexicalComposerContext.Provider value={[testEnv.editor, context]}>
@@ -598,6 +611,64 @@ export function polyfillContentEditable() {
   });
 }
 
+/**
+ * The zero-size, out-of-flow `<img>` the reconciler parks outside a leading or
+ * trailing block DecoratorNode so browsers keep painting the selection
+ * highlight for a range that ends on that boundary (#8922). Interpolate it into
+ * an expected-HTML template wherever a block decorator sits on an element's
+ * first / last edge.
+ */
+export const DECORATOR_BOUNDARY_ANCHOR_HTML =
+  '<img alt="" style="position: absolute !important; width: 0px !important; ' +
+  'height: 0px !important; border: 0px !important; margin: 0px !important; ' +
+  'padding: 0px !important;" data-lexical-decorator-boundary="true" />';
+
+/**
+ * Assert that a node's generated exporters write exactly what the schema-driven
+ * walk writes for it — same values, same key order — in every form the class
+ * has generated code for. Not vacuous: the class has to have generated code
+ * for at least the legacy form, or there is nothing to compare.
+ *
+ * Exactly, in both forms: a property whose default the generator could not
+ * state as source compares through the class's own `isCompactDefault` rather
+ * than being written regardless, so the compact form has no key the walk would
+ * not have written.
+ */
+export function $expectSameJSON(node: LexicalNode): void {
+  expect($generatedExportJSON(node, false)).toBeDefined();
+  // Both forms: each is generated separately, so each has to agree with the
+  // walk separately. A form the class has no generated code for is the walk.
+  for (const compact of [false, true]) {
+    const fromGenerated = $generatedExportJSON(node, compact);
+    if (fromGenerated === undefined) {
+      continue;
+    }
+    const fromWalk = $walkExportJSON(node, compact);
+    expect({compact, json: fromGenerated}).toEqual({compact, json: fromWalk});
+    // Key order too: a document round-tripped through JSON.stringify should
+    // not reorder depending on which implementation exported it.
+    expect(Object.keys(fromGenerated)).toEqual(Object.keys(fromWalk));
+  }
+}
+
+/**
+ * Assert that parsing `json` into a fresh node of `klass` through its generated
+ * parser lands on the same node the schema-driven walk lands on, judged by what
+ * each then exports. Not vacuous: the class has to have a generated parser.
+ * Call inside an update.
+ */
+export function $expectSameParse<T extends LexicalNode>(
+  klass: Klass<T>,
+  json: {readonly [key: string]: unknown},
+): T {
+  const generated = getGeneratedJSON(klass);
+  expect(generated && generated.updateFromJSON).toBeDefined();
+  const viaGenerated = $applyJSONSetters($create(klass), json);
+  const viaWalk = $walkJSONSetters($create(klass), json);
+  expect(viaGenerated.exportJSON()).toEqual(viaWalk.exportJSON());
+  return viaGenerated;
+}
+
 export function expectHtmlToBeEqual(actual: string, expected: string): void {
   expect(prettifyHtml(actual)).toBe(prettifyHtml(expected));
 }
@@ -607,4 +678,37 @@ export function prettifyHtml(s: string): string {
     ...prettierConfig,
     parser: 'html',
   });
+}
+
+/**
+ * Locate and run the DOM importer for `element` through the editor's registered
+ * conversion cache — the same machinery `@lexical/html`'s paste path consults
+ * via `getConversionFunction` — and return its {@link DOMConversionOutput}.
+ *
+ * Prefer this over calling a node's static `importDOM()` directly: it exercises
+ * the real registration (priority resolution, dedup, and any `HTMLConfig`
+ * import overrides) instead of one class's raw map, and it runs the conversion
+ * on `element` in place so logic that inspects the element's DOM ancestors
+ * (e.g. a table cell reading its row/table position) sees the real context.
+ */
+export function $runDOMConversion(
+  editor: LexicalEditor,
+  element: HTMLElement,
+): DOMConversionOutput | null {
+  let match: DOMConversion | null = null;
+  const conversions = editor._htmlConversions.get(
+    element.tagName.toLowerCase(),
+  );
+  if (conversions !== undefined) {
+    for (const conversion of conversions) {
+      const candidate = conversion(element);
+      if (
+        candidate !== null &&
+        (match === null || (match.priority || 0) <= (candidate.priority || 0))
+      ) {
+        match = candidate;
+      }
+    }
+  }
+  return match !== null ? match.conversion(element) : null;
 }

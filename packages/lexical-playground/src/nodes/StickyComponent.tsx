@@ -6,9 +6,6 @@
  *
  */
 
-import type {LexicalEditorWithDispose, NodeKey} from 'lexical';
-import type {JSX} from 'react';
-
 import './StickyNode.css';
 
 import {useCollaborationContext} from '@lexical/react/LexicalCollaborationContext';
@@ -16,11 +13,18 @@ import {CollaborationPlugin} from '@lexical/react/LexicalCollaborationPlugin';
 import {useLexicalComposerContext} from '@lexical/react/LexicalComposerContext';
 import {LexicalExtensionEditorComposer} from '@lexical/react/LexicalExtensionEditorComposer';
 import {calculateZoomLevel} from '@lexical/utils';
-import {$getNodeByKey, mergeRegister, registerEventListener} from 'lexical';
+import {
+  $getNodeByKey,
+  type LexicalEditorWithDispose,
+  mergeRegister,
+  type NodeKey,
+  registerEventListener,
+  registerEventListeners,
+} from 'lexical';
 import * as React from 'react';
-import {useEffect, useLayoutEffect, useRef} from 'react';
+import {type JSX, useEffect, useLayoutEffect, useRef} from 'react';
 
-import {createWebsocketProvider} from '../collaboration';
+import {createWebsocketProvider, skipCollaborationInit} from '../collaboration';
 import {$isStickyNode} from './StickyNode';
 
 interface Positioning {
@@ -59,6 +63,8 @@ export default function StickyComponent({
 }): JSX.Element {
   const [editor] = useLexicalComposerContext();
   const stickyContainerRef = useRef<null | HTMLDivElement>(null);
+  const dragCleanupRef = useRef<(() => void) | null>(null);
+  useEffect(() => () => dragCleanupRef.current?.(), []);
   const positioningRef = useRef<Positioning>({
     isDragging: false,
     offsetX: 0,
@@ -159,8 +165,8 @@ export default function StickyComponent({
         }
       });
     }
-    document.removeEventListener('pointermove', handlePointerMove);
-    document.removeEventListener('pointerup', handlePointerUp);
+    dragCleanupRef.current?.();
+    dragCleanupRef.current = null;
   };
 
   const handleDelete = () => {
@@ -204,8 +210,12 @@ export default function StickyComponent({
             positioning.offsetY = event.clientY / zoom - top;
             positioning.isDragging = true;
             stickContainer.classList.add('dragging');
-            document.addEventListener('pointermove', handlePointerMove);
-            document.addEventListener('pointerup', handlePointerUp);
+            const doc = stickContainer.ownerDocument;
+            dragCleanupRef.current?.();
+            dragCleanupRef.current = registerEventListeners(doc, {
+              pointermove: handlePointerMove,
+              pointerup: handlePointerUp,
+            });
             event.preventDefault();
           }
         }}>
@@ -228,7 +238,7 @@ export default function StickyComponent({
             <CollaborationPlugin
               id={caption.getKey()}
               providerFactory={createWebsocketProvider}
-              shouldBootstrap={true}
+              shouldBootstrap={!skipCollaborationInit}
               selectionHighlight={true}
             />
           ) : null}

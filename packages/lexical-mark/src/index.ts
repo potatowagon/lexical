@@ -6,18 +6,24 @@
  *
  */
 
-import type {SerializedMarkNode} from './MarkNode';
-import type {ElementNode, LexicalNode, RangeSelection, TextNode} from 'lexical';
-
 import {
   $createRangeSelection,
   $isDecoratorNode,
   $isElementNode,
   $isTextNode,
   defineExtension,
+  type ElementNode,
+  type LexicalNode,
+  type RangeSelection,
+  type TextNode,
 } from 'lexical';
 
-import {$createMarkNode, $isMarkNode, MarkNode} from './MarkNode';
+import {
+  $createMarkNode,
+  $isMarkNode,
+  MarkNode,
+  type SerializedMarkNode,
+} from './MarkNode';
 
 export function $unwrapMarkNode(node: MarkNode): void {
   const children = node.getChildren();
@@ -157,9 +163,9 @@ export function $getMarkIDs(node: TextNode, offset: number): null | string[] {
 /**
  * Configures {@link MarkNode}
  */
-export const MarkExtension = /* @__PURE__ */ defineExtension({
+export const MarkExtension = defineExtension({
   name: '@lexical/mark',
   nodes: () => [MarkNode],
 });
 
-export {$createMarkNode, $isMarkNode, MarkNode, SerializedMarkNode};
+export {$createMarkNode, $isMarkNode, MarkNode, type SerializedMarkNode};

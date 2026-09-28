@@ -6,8 +6,6 @@
  *
  */
 
-import type {JSX} from 'react';
-
 import {useLexicalComposerContext} from '@lexical/react/LexicalComposerContext';
 import {LexicalErrorBoundary} from '@lexical/react/LexicalErrorBoundary';
 import {useLexicalEditable} from '@lexical/react/useLexicalEditable';
@@ -19,6 +17,7 @@ import {
   $isElementNode,
   $isNodeSelection,
   $isTextNode,
+  $onUpdate,
   $setSelection,
   CLICK_COMMAND,
   COMMAND_PRIORITY_HIGH,
@@ -27,11 +26,11 @@ import {
   KEY_ENTER_COMMAND,
   KEY_ESCAPE_COMMAND,
   mergeRegister,
-  NodeKey,
+  type NodeKey,
   SELECTION_CHANGE_COMMAND,
 } from 'lexical';
 import * as React from 'react';
-import {useCallback, useEffect, useRef, useState} from 'react';
+import {type JSX, useCallback, useEffect, useRef, useState} from 'react';
 
 import EquationEditor from '../ui/EquationEditor';
 import KatexRenderer from '../ui/KatexRenderer';
@@ -97,7 +96,7 @@ export default function EquationComponent({
   // root-level element point that swallows further keystrokes — the
   // user sees an editor that won't accept text after a fresh equation.
   const $onEnter = useCallback(
-    (event: KeyboardEvent) => {
+    (event: null | KeyboardEvent) => {
       const latestSelection = $getSelection();
       if (
         !(
@@ -131,7 +130,7 @@ export default function EquationComponent({
         node.insertAfter(paragraph);
         paragraph.select();
       }
-      event.preventDefault();
+      event?.preventDefault();
       return true;
     },
     [nodeKey],
@@ -235,15 +234,17 @@ export default function EquationComponent({
         editor.registerCommand(
           SELECTION_CHANGE_COMMAND,
           payload => {
-            const inputElem = inputRef.current;
-            // getActiveElement rather than document.activeElement, which
-            // reports the shadow host when the editor is in a shadow root.
-            const activeElement = inputElem
-              ? getActiveElement(inputElem)
-              : null;
-            if (inputElem !== activeElement) {
-              onHide();
-            }
+            $onUpdate(() => {
+              const inputElem = inputRef.current;
+              // getActiveElement rather than document.activeElement, which
+              // reports the shadow host when the editor is in a shadow root.
+              const activeElement = inputElem
+                ? getActiveElement(inputElem)
+                : null;
+              if (inputElem !== activeElement) {
+                onHide();
+              }
+            });
             return false;
           },
           COMMAND_PRIORITY_HIGH,

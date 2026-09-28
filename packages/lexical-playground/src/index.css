@@ -6,10 +6,30 @@
  *
  */
 
-@import 'https://fonts.googleapis.com/css?family=Reenie+Beanie';
+/* Reenie Beanie is served from the app rather than fetched from Google Fonts.
+   A third-party stylesheet in the critical path delays `load` for every visitor
+   (and every e2e run) on whatever the network does that day, and it hands a
+   request from each of them to a third party. See src/fonts/OFL.txt for the
+   license. */
+@font-face {
+  font-family: 'Reenie Beanie';
+  font-style: normal;
+  font-weight: 400;
+  /* The sticky note is decorative, so let it paint in the fallback and swap. */
+  font-display: swap;
+  src: url(fonts/ReenieBeanie-Regular.woff2) format('woff2');
+}
 
 :root {
   --playground-font-size: 16px;
+}
+
+html {
+  /* The page scrolls at the document level while .toolbar is sticky at the
+     top of the viewport (48px rendered: 36px height + 2 * 6px padding).
+     scroll-padding keeps scrollIntoViewIfNeeded and native scrolling from
+     leaving the selection hidden underneath it. */
+  scroll-padding-top: 52px;
 }
 
 body {
@@ -427,12 +447,9 @@ pre::-webkit-scrollbar-thumb {
   width: 250px;
 }
 
-i.palette {
-  background-image: url(images/icons/palette.svg);
-}
-
 i.bucket {
-  background-image: url(images/icons/paint-bucket.svg);
+  -webkit-mask-image: url(images/icons/paint-bucket.svg);
+  mask-image: url(images/icons/paint-bucket.svg);
 }
 
 i.bold {
@@ -503,6 +520,11 @@ i.link {
 i.add-comment {
   -webkit-mask-image: url(images/icons/chat-left-text.svg);
   mask-image: url(images/icons/chat-left-text.svg);
+}
+
+i.ruby {
+  -webkit-mask-image: url(images/icons/ruby.svg);
+  mask-image: url(images/icons/ruby.svg);
 }
 
 i.horizontal-rule {
@@ -668,7 +690,13 @@ i.sticky {
 }
 
 i.star {
-  background-image: url(images/icons/star.svg);
+  -webkit-mask-image: url(images/icons/star.svg);
+  mask-image: url(images/icons/star.svg);
+}
+
+i.keyboard-shortcuts {
+  -webkit-mask-image: url(images/icons/keyboard.svg);
+  mask-image: url(images/icons/keyboard.svg);
 }
 
 i.mic {
@@ -1635,11 +1663,12 @@ button.action-button:disabled {
   display: flex;
   margin-bottom: 1px;
   background: #fff;
-  padding: 4px;
+  padding: 6px;
   border-top-left-radius: 10px;
   border-top-right-radius: 10px;
   vertical-align: middle;
   overflow: auto;
+  scrollbar-width: thin;
   height: 36px;
   position: sticky;
   top: 0;
@@ -1782,7 +1811,7 @@ button.toolbar-item.active i {
   padding: 20px 10px;
   position: relative;
   border: 1px solid #e8e8e8;
-  font-family: 'Reenie Beanie';
+  font-family: 'Reenie Beanie', cursive;
   font-size: 24px;
   border-bottom-right-radius: 60px 5px;
   display: block;

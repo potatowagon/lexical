@@ -7,10 +7,17 @@
  */
 
 import type {LexicalEditor} from 'lexical';
-import type {ForwardedRef, JSX, RefCallback} from 'react';
 
 import * as React from 'react';
-import {forwardRef, useCallback, useMemo, useState} from 'react';
+import {
+  type ForwardedRef,
+  forwardRef,
+  type JSX,
+  type RefCallback,
+  useCallback,
+  useMemo,
+  useState,
+} from 'react';
 
 import {mergeRefs} from './mergeRefs';
 import useLayoutEffect from './useLayoutEffect';
@@ -125,7 +132,7 @@ function ContentEditableElementImpl(
       role={role}
       spellCheck={spellCheck}
       style={style}
-      tabIndex={tabIndex}
+      tabIndex={tabIndex ?? (isEditable ? undefined : -1)}
       {...rest}
     />
   );
@@ -139,4 +146,9 @@ function ContentEditableElementImpl(
  * attributes. Prefer {@link ContentEditable}, which reads the editor from
  * context and adds placeholder support, unless you need this extra control.
  */
-export const ContentEditableElement = forwardRef(ContentEditableElementImpl);
+// Annotated by hand: React's forwardRef is not a Lexical factory, so the build
+// does not annotate it, and an unannotated module-scope call pins the module
+// into every bundle that imports it.
+export const ContentEditableElement = /* @__PURE__ */ forwardRef(
+  ContentEditableElementImpl,
+);

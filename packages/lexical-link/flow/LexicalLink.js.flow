@@ -38,12 +38,12 @@ declare export class LinkNode extends ElementNode {
   __target: null | string;
   __rel: null | string;
   __title: null | string;
-  static getType(): string;
-  static clone(node: LinkNode): LinkNode;
-  constructor(url: string, attributes?: LinkAttributes, key?: NodeKey): void;
+  constructor(url?: string, attributes?: LinkAttributes, key?: NodeKey): void;
   createDOM(config: EditorConfig): HTMLElement;
-  static importDOM(): DOMConversionMap | null;
-  exportJSON(): SerializedLinkNode;
+  // See LexicalNode.exportJSON: one signature, the legacy form, and `false`
+  // rather than `boolean` so a compact call is refused instead of answered
+  // with a shape the value does not have.
+  exportJSON(compact?: false): SerializedLinkNode;
   getURL(): string;
   setURL(url: string): void;
   getTarget(): null | string;
@@ -74,9 +74,6 @@ export type SerializedAutoLinkNode = {
   ...
 };
 declare export class AutoLinkNode extends LinkNode {
-  static getType(): string;
-  // $FlowFixMe[incompatible-type] clone method inheritance
-  static clone(node: AutoLinkNode): AutoLinkNode;
   insertNewAfter(
     selection: RangeSelection,
     restoreSelection?: boolean,
@@ -169,3 +166,17 @@ declare export function registerLink(
   editor: LexicalEditor,
   stores: NamedSignalsOutput<LinkConfig>,
 ): () => void;
+
+export type AutoLinkAnnounceExtensionConfig = {
+  created: string,
+  createdMany: string,
+  destroyed: string,
+  destroyedMany: string,
+  disabled: boolean,
+};
+declare export var AutoLinkAnnounceExtension: LexicalExtension<
+  AutoLinkAnnounceExtensionConfig,
+  '@lexical/link/AutoLinkAnnounce',
+  NamedSignalsOutput<AutoLinkAnnounceExtensionConfig>,
+  void,
+>;

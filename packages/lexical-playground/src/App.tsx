@@ -52,6 +52,8 @@ import {
   RichTextExtension,
 } from '@lexical/rich-text';
 import {TableExtension} from '@lexical/table';
+import {Analytics} from '@vercel/analytics/react';
+import {SpeedInsights} from '@vercel/speed-insights/react';
 import {
   $createParagraphNode,
   $createTextNode,
@@ -66,6 +68,7 @@ import {isDevPlayground} from './appSettings';
 import {
   createWebsocketProvider,
   createWebsocketProviderWithDoc,
+  skipCollaborationInit,
 } from './collaboration';
 import {FlashMessageContext} from './context/FlashMessageContext';
 import {SettingsContext, useSettings} from './context/SettingsContext';
@@ -88,6 +91,7 @@ import {EmojisExtension} from './plugins/EmojisExtension';
 import {EquationsExtension} from './plugins/EquationsExtension';
 import {ExcalidrawExtension} from './plugins/ExcalidrawExtension';
 import {FigmaExtension} from './plugins/FigmaExtension';
+import {ReactFindReplaceExtension} from './plugins/FindReplaceExtension';
 import {ImagesExtension} from './plugins/ImagesExtension';
 import {LayoutExtension} from './plugins/LayoutExtension/LayoutExtension';
 import {PlaygroundMarkdownShortcutsExtension} from './plugins/MarkdownShortcutsExtension';
@@ -99,6 +103,8 @@ import PasteLogPlugin from './plugins/PasteLogPlugin';
 import {PollExtension} from './plugins/PollExtension';
 import {PullQuoteExtension} from './plugins/PullQuoteExtension';
 import {ReactReviewExtension} from './plugins/ReviewExtension';
+import {RubyExtension} from './plugins/RubyExtension';
+import {ShortcutsExtension} from './plugins/ShortcutsExtension';
 import {SpecialTextExtension} from './plugins/SpecialTextExtension';
 import {TabFocusExtension} from './plugins/TabFocusExtension';
 import {TerseExportExtension} from './plugins/TerseExportExtension';
@@ -118,10 +124,6 @@ console.warn(
 );
 
 const COLLAB_DOC_ID = 'main';
-
-const skipCollaborationInit =
-  // @ts-expect-error
-  window.parent != null && window.parent.frames.right === window;
 
 function $prepopulatedRichText() {
   const root = $getRoot();
@@ -204,9 +206,9 @@ function $prepopulatedRichText() {
 }
 
 // These are only enabled for rich-text mode
-const PlaygroundRichTextExtension = /* @__PURE__ */ defineExtension({
+const PlaygroundRichTextExtension = defineExtension({
   dependencies: [
-    /* @__PURE__ */ configExtension(RichTextExtension, {
+    configExtension(RichTextExtension, {
       escapeFormatTriggers: {
         code: {arrow: true, click: true, enter: true, onlyAtBoundary: true},
       },
@@ -217,7 +219,9 @@ const PlaygroundRichTextExtension = /* @__PURE__ */ defineExtension({
     // tracks this node set automatically (kept out of the always-on
     // PlaygroundImportExtension so plain-text mode doesn't pull in
     // RichTextExtension, which conflicts with PlainTextExtension).
-    TableExtension,
+    configExtension(TableExtension, {
+      hasStickyScrollbar: true,
+    }),
     ImagesExtension,
     HorizontalRuleExtension,
     PageBreakExtension,
@@ -227,7 +231,7 @@ const PlaygroundRichTextExtension = /* @__PURE__ */ defineExtension({
     TabFocusExtension,
     CollapsibleExtension,
     CodeHighlightExtension,
-    /* @__PURE__ */ configExtension(ListExtension, {
+    configExtension(ListExtension, {
       shouldPreserveNumbering: false,
     }),
     CheckListExtension,
@@ -240,13 +244,16 @@ const PlaygroundRichTextExtension = /* @__PURE__ */ defineExtension({
     ExcalidrawExtension,
     CardExtension,
     ReactReviewExtension,
+    ReactFindReplaceExtension,
     PullQuoteExtension,
-    /* @__PURE__ */ configExtension(TabIndentationExtension, {maxIndent: 7}),
+    RubyExtension,
+    ShortcutsExtension,
+    configExtension(TabIndentationExtension, {maxIndent: 7}),
   ],
   name: '@lexical/playground/RichText',
 });
 
-const AppExtension = /* @__PURE__ */ defineExtension({
+const AppExtension = defineExtension({
   dependencies: [
     AutoFocusExtension,
     ClearEditorExtension,
@@ -265,20 +272,20 @@ const AppExtension = /* @__PURE__ */ defineExtension({
     DragDropPasteExtension,
     EmojisExtension,
     MentionsExtension,
-    /* @__PURE__ */ configExtension(LinkExtension, {validateUrl}),
+    configExtension(LinkExtension, {validateUrl}),
     PlaygroundAutoLinkExtension,
-    ClickableLinkExtension,
+    configExtension(ClickableLinkExtension, {newTab: true}),
     SelectionAlwaysOnDisplayExtension,
-    /* @__PURE__ */ configExtension(SelectBlockExtension, {
+    configExtension(SelectBlockExtension, {
       cascadeSelection: true,
     }),
     TerseExportExtension,
-    /* @__PURE__ */ configExtension(ClickAfterLastBlockExtension, {
+    configExtension(ClickAfterLastBlockExtension, {
       $shouldInsertAfter: node =>
         $defaultShouldInsertAfter(node) || $isCodeNode(node),
     }),
-    /* @__PURE__ */ configExtension(AutocompleteExtension, {disabled: true}),
-    /* @__PURE__ */ configExtension(VisibleNonPrintingExtension, {
+    configExtension(AutocompleteExtension, {disabled: true}),
+    configExtension(VisibleNonPrintingExtension, {
       disabled: true,
     }),
     // DOMImportExtension pipeline — `PlaygroundImportExtension` bundles
@@ -478,6 +485,8 @@ export default function PlaygroundApp(): JSX.Element {
           />
         </svg>
       </a>
+      <Analytics />
+      <SpeedInsights />
     </SettingsContext>
   );
 }

@@ -6,6 +6,7 @@
  *
  */
 import {
+  $cloneWithProperties,
   $createParagraphNode,
   $createTextNode,
   $getRoot,
@@ -15,7 +16,7 @@ import {
   $isRootNode,
   $isTextNode,
   ElementNode,
-  RootNode,
+  type RootNode,
 } from 'lexical';
 import {beforeEach, describe, expect, test} from 'vitest';
 
@@ -79,11 +80,15 @@ describe('LexicalRootNode tests', () => {
         // serialized Lexical Core Node. Please ensure the correct adapter
         // logic is in place in the corresponding importJSON method
         // to accommodate these changes.
+        // Present-with-undefined, not absent: a getter with nothing to say
+        // puts undefined in the value position, which JSON.stringify omits.
         expect(node.exportJSON()).toStrictEqual({
           children: [],
           direction: null,
           format: '',
           indent: 0,
+          textFormat: undefined,
+          textStyle: undefined,
           type: 'root',
           version: 1,
         });
@@ -91,7 +96,7 @@ describe('LexicalRootNode tests', () => {
     });
 
     test('RootNode.clone()', async () => {
-      const rootNodeClone = (rootNode.constructor as typeof RootNode).clone();
+      const rootNodeClone = $cloneWithProperties(rootNode);
 
       expect(rootNodeClone).not.toBe(rootNode);
       expect(rootNodeClone).toStrictEqual(rootNode);

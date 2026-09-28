@@ -6,8 +6,6 @@
  *
  */
 
-import type {JSX} from 'react';
-
 import {useMergeRefs} from '@floating-ui/react';
 import {$isCodeNode} from '@lexical/code';
 import {
@@ -44,30 +42,31 @@ import {
   $isNodeSelection,
   $isRangeSelection,
   $isRootOrShadowRoot,
+  $onUpdate,
+  type AnyLexicalCommand,
   CAN_REDO_COMMAND,
   CAN_UNDO_COMMAND,
   COMMAND_PRIORITY_CRITICAL,
-  CommandPayloadType,
-  ElementFormatType,
+  type CommandPayloadType,
+  type ElementFormatType,
   FORMAT_ELEMENT_COMMAND,
   FORMAT_TEXT_COMMAND,
   HISTORIC_TAG,
   INDENT_CONTENT_COMMAND,
   IS_APPLE,
-  LexicalCommand,
-  LexicalEditor,
-  LexicalNode,
+  type LexicalEditor,
+  type LexicalNode,
   mergeRegister,
-  NodeKey,
+  type NodeKey,
   OUTDENT_CONTENT_COMMAND,
   REDO_COMMAND,
   SELECTION_CHANGE_COMMAND,
   SKIP_DOM_SELECTION_TAG,
   SKIP_SELECTION_FOCUS_TAG,
-  TextFormatType,
+  type TextFormatType,
   UNDO_COMMAND,
 } from 'lexical';
-import {Dispatch, useCallback, useEffect, useState} from 'react';
+import {type Dispatch, type JSX, useCallback, useEffect, useState} from 'react';
 
 import {useSettings} from '../../context/SettingsContext';
 import {
@@ -91,14 +90,14 @@ import {INSERT_EXCALIDRAW_COMMAND} from '../ExcalidrawExtension';
 import {
   INSERT_IMAGE_COMMAND,
   InsertImageDialog,
-  InsertImagePayload,
+  type InsertImagePayload,
 } from '../ImagesExtension';
 import InsertLayoutDialog from '../LayoutExtension/InsertLayoutDialog';
 import {INSERT_PAGE_BREAK} from '../PageBreakExtension';
 import {PagesReactExtension} from '../PagesReactExtension';
 import {InsertPollDialog} from '../PollExtension';
-import {SHORTCUTS} from '../ShortcutsPlugin/shortcuts';
-import ShortcutsHelpDialog from '../ShortcutsPlugin/ShortcutsHelpDialog';
+import {$isRubyNode, $toggleRuby} from '../RubyExtension/RubyNode';
+import {shortcut} from '../ShortcutsExtension/shortcuts';
 import {InsertTableDialog} from '../TablePlugin';
 import FontSize, {parseFontSizeForToolbar} from './fontSize';
 import {
@@ -289,7 +288,7 @@ function BlockFormatDropDown({
           <i className="icon paragraph" />
           <span className="text">Normal</span>
         </div>
-        <span className="shortcut">{SHORTCUTS.NORMAL}</span>
+        <span className="shortcut">{shortcut('NORMAL')}</span>
       </DropDownItem>
       <DropDownItem
         className={'item wide ' + dropDownActiveClass(blockType === 'h1')}
@@ -298,7 +297,7 @@ function BlockFormatDropDown({
           <i className="icon h1" />
           <span className="text">Heading 1</span>
         </div>
-        <span className="shortcut">{SHORTCUTS.HEADING1}</span>
+        <span className="shortcut">{shortcut('HEADING1')}</span>
       </DropDownItem>
       <DropDownItem
         className={'item wide ' + dropDownActiveClass(blockType === 'h2')}
@@ -307,7 +306,7 @@ function BlockFormatDropDown({
           <i className="icon h2" />
           <span className="text">Heading 2</span>
         </div>
-        <span className="shortcut">{SHORTCUTS.HEADING2}</span>
+        <span className="shortcut">{shortcut('HEADING2')}</span>
       </DropDownItem>
       <DropDownItem
         className={'item wide ' + dropDownActiveClass(blockType === 'h3')}
@@ -316,7 +315,7 @@ function BlockFormatDropDown({
           <i className="icon h3" />
           <span className="text">Heading 3</span>
         </div>
-        <span className="shortcut">{SHORTCUTS.HEADING3}</span>
+        <span className="shortcut">{shortcut('HEADING3')}</span>
       </DropDownItem>
       <DropDownItem
         className={'item wide ' + dropDownActiveClass(blockType === 'number')}
@@ -325,7 +324,7 @@ function BlockFormatDropDown({
           <i className="icon numbered-list" />
           <span className="text">Numbered List</span>
         </div>
-        <span className="shortcut">{SHORTCUTS.NUMBERED_LIST}</span>
+        <span className="shortcut">{shortcut('NUMBERED_LIST')}</span>
       </DropDownItem>
       <DropDownItem
         className={'item wide ' + dropDownActiveClass(blockType === 'bullet')}
@@ -334,7 +333,7 @@ function BlockFormatDropDown({
           <i className="icon bullet-list" />
           <span className="text">Bullet List</span>
         </div>
-        <span className="shortcut">{SHORTCUTS.BULLET_LIST}</span>
+        <span className="shortcut">{shortcut('BULLET_LIST')}</span>
       </DropDownItem>
       <DropDownItem
         className={'item wide ' + dropDownActiveClass(blockType === 'check')}
@@ -343,7 +342,7 @@ function BlockFormatDropDown({
           <i className="icon check-list" />
           <span className="text">Check List</span>
         </div>
-        <span className="shortcut">{SHORTCUTS.CHECK_LIST}</span>
+        <span className="shortcut">{shortcut('CHECK_LIST')}</span>
       </DropDownItem>
       <DropDownItem
         className={'item wide ' + dropDownActiveClass(blockType === 'quote')}
@@ -352,7 +351,7 @@ function BlockFormatDropDown({
           <i className="icon quote" />
           <span className="text">Quote</span>
         </div>
-        <span className="shortcut">{SHORTCUTS.QUOTE}</span>
+        <span className="shortcut">{shortcut('QUOTE')}</span>
       </DropDownItem>
       <DropDownItem
         className={'item wide ' + dropDownActiveClass(blockType === 'code')}
@@ -361,7 +360,7 @@ function BlockFormatDropDown({
           <i className="icon code" />
           <span className="text">Code Block</span>
         </div>
-        <span className="shortcut">{SHORTCUTS.CODE_BLOCK}</span>
+        <span className="shortcut">{shortcut('CODE_BLOCK')}</span>
       </DropDownItem>
     </DropDown>
   );
@@ -458,7 +457,7 @@ function ElementFormatDropdown({
           <i className="icon left-align" />
           <span className="text">Left Align</span>
         </div>
-        <span className="shortcut">{SHORTCUTS.LEFT_ALIGN}</span>
+        <span className="shortcut">{shortcut('LEFT_ALIGN')}</span>
       </DropDownItem>
       <DropDownItem
         onClick={() => {
@@ -469,7 +468,7 @@ function ElementFormatDropdown({
           <i className="icon center-align" />
           <span className="text">Center Align</span>
         </div>
-        <span className="shortcut">{SHORTCUTS.CENTER_ALIGN}</span>
+        <span className="shortcut">{shortcut('CENTER_ALIGN')}</span>
       </DropDownItem>
       <DropDownItem
         onClick={() => {
@@ -480,7 +479,7 @@ function ElementFormatDropdown({
           <i className="icon right-align" />
           <span className="text">Right Align</span>
         </div>
-        <span className="shortcut">{SHORTCUTS.RIGHT_ALIGN}</span>
+        <span className="shortcut">{shortcut('RIGHT_ALIGN')}</span>
       </DropDownItem>
       <DropDownItem
         onClick={() => {
@@ -491,7 +490,7 @@ function ElementFormatDropdown({
           <i className="icon justify-align" />
           <span className="text">Justify Align</span>
         </div>
-        <span className="shortcut">{SHORTCUTS.JUSTIFY_ALIGN}</span>
+        <span className="shortcut">{shortcut('JUSTIFY_ALIGN')}</span>
       </DropDownItem>
       <DropDownItem
         onClick={() => {
@@ -524,25 +523,25 @@ function ElementFormatDropdown({
       <Divider />
       <DropDownItem
         onClick={() => {
-          editor.dispatchCommand(OUTDENT_CONTENT_COMMAND, undefined);
+          editor.dispatchCommand(OUTDENT_CONTENT_COMMAND);
         }}
         className="item wide">
         <div className="icon-text-container">
           <i className={'icon ' + (isRTL ? 'indent' : 'outdent')} />
           <span className="text">Outdent</span>
         </div>
-        <span className="shortcut">{SHORTCUTS.OUTDENT}</span>
+        <span className="shortcut">{shortcut('OUTDENT')}</span>
       </DropDownItem>
       <DropDownItem
         onClick={() => {
-          editor.dispatchCommand(INDENT_CONTENT_COMMAND, undefined);
+          editor.dispatchCommand(INDENT_CONTENT_COMMAND);
         }}
         className="item wide">
         <div className="icon-text-container">
           <i className={'icon ' + (isRTL ? 'outdent' : 'indent')} />
           <span className="text">Indent</span>
         </div>
-        <span className="shortcut">{SHORTCUTS.INDENT}</span>
+        <span className="shortcut">{shortcut('INDENT')}</span>
       </DropDownItem>
     </DropDown>
   );
@@ -568,11 +567,13 @@ export default function ToolbarPlugin({
   activeEditor,
   setActiveEditor,
   setIsLinkEditMode,
+  setIsRubyEditMode,
 }: {
   editor: LexicalEditor;
   activeEditor: LexicalEditor;
   setActiveEditor: Dispatch<LexicalEditor>;
   setIsLinkEditMode: Dispatch<boolean>;
+  setIsRubyEditMode: Dispatch<boolean>;
 }): JSX.Element {
   const [selectedElementKey, setSelectedElementKey] = useState<NodeKey | null>(
     null,
@@ -584,7 +585,7 @@ export default function ToolbarPlugin({
   const focusManagerRef = useLexicalFocusManagerRef();
   const toolbarRef = useMergeRefs([rovingRef, focusManagerRef]);
 
-  const dispatchToolbarCommand = <T extends LexicalCommand<unknown>>(
+  const dispatchToolbarCommand = <T extends AnyLexicalCommand>(
     command: T,
     payload: CommandPayloadType<T> | undefined = undefined,
     skipRefocus: boolean = false,
@@ -684,10 +685,7 @@ export default function ToolbarPlugin({
       if (elementDOM !== null) {
         setSelectedElementKey(elementKey);
         if ($isListNode(element)) {
-          const parentList = $getNearestNodeOfType<ListNode>(
-            anchorNode,
-            ListNode,
-          );
+          const parentList = $getNearestNodeOfType(anchorNode, ListNode);
           const type = parentList
             ? parentList.getListType()
             : element.getListType();
@@ -763,10 +761,7 @@ export default function ToolbarPlugin({
     if ($isNodeSelection(selection)) {
       const nodes = selection.getNodes();
       for (const selectedNode of nodes) {
-        const parentList = $getNearestNodeOfType<ListNode>(
-          selectedNode,
-          ListNode,
-        );
+        const parentList = $getNearestNodeOfType(selectedNode, ListNode);
         if (parentList) {
           const type = parentList.getListType();
           updateToolbarState('blockType', type);
@@ -797,7 +792,7 @@ export default function ToolbarPlugin({
       SELECTION_CHANGE_COMMAND,
       (_payload, newEditor) => {
         setActiveEditor(newEditor);
-        $updateToolbar();
+        $onUpdate(() => newEditor.read('latest', $updateToolbar));
         return false;
       },
       COMMAND_PRIORITY_CRITICAL,
@@ -823,7 +818,7 @@ export default function ToolbarPlugin({
           {editor: activeEditor},
         );
       }),
-      activeEditor.registerCommand<boolean>(
+      activeEditor.registerCommand(
         CAN_UNDO_COMMAND,
         payload => {
           updateToolbarState('canUndo', payload);
@@ -831,7 +826,7 @@ export default function ToolbarPlugin({
         },
         COMMAND_PRIORITY_CRITICAL,
       ),
-      activeEditor.registerCommand<boolean>(
+      activeEditor.registerCommand(
         CAN_REDO_COMMAND,
         payload => {
           updateToolbarState('canRedo', payload);
@@ -894,6 +889,26 @@ export default function ToolbarPlugin({
       activeEditor.dispatchCommand(TOGGLE_LINK_COMMAND, null);
     }
   }, [activeEditor, setIsLinkEditMode, toolbarState.isLink]);
+
+  const insertRuby = useCallback(() => {
+    const {hasRuby, hasSelection} = activeEditor.read(() => {
+      const selection = $getSelection();
+      if ($isRangeSelection(selection)) {
+        return {
+          hasRuby: selection.getNodes().some($isRubyNode),
+          hasSelection: !selection.isCollapsed(),
+        };
+      }
+      return {hasRuby: false, hasSelection: false};
+    });
+    if (hasRuby) {
+      activeEditor.update(() => {
+        $toggleRuby(null);
+      });
+    } else if (hasSelection) {
+      setIsRubyEditMode(true);
+    }
+  }, [activeEditor, setIsRubyEditMode]);
 
   const onCodeLanguageSelect = useCallback(
     (value: string | null) => {
@@ -1092,9 +1107,9 @@ export default function ToolbarPlugin({
             className={
               'toolbar-item spaced ' + (toolbarState.isBold ? 'active' : '')
             }
-            title={`Bold (${SHORTCUTS.BOLD})`}
+            title={`Bold (${shortcut('BOLD')})`}
             type="button"
-            aria-label={`Format text as bold. Shortcut: ${SHORTCUTS.BOLD}`}>
+            aria-label={`Format text as bold. Shortcut: ${shortcut('BOLD')}`}>
             <i className="format bold" />
           </button>
           <button
@@ -1105,9 +1120,9 @@ export default function ToolbarPlugin({
             className={
               'toolbar-item spaced ' + (toolbarState.isItalic ? 'active' : '')
             }
-            title={`Italic (${SHORTCUTS.ITALIC})`}
+            title={`Italic (${shortcut('ITALIC')})`}
             type="button"
-            aria-label={`Format text as italics. Shortcut: ${SHORTCUTS.ITALIC}`}>
+            aria-label={`Format text as italics. Shortcut: ${shortcut('ITALIC')}`}>
             <i className="format italic" />
           </button>
           <button
@@ -1119,9 +1134,9 @@ export default function ToolbarPlugin({
               'toolbar-item spaced ' +
               (toolbarState.isUnderline ? 'active' : '')
             }
-            title={`Underline (${SHORTCUTS.UNDERLINE})`}
+            title={`Underline (${shortcut('UNDERLINE')})`}
             type="button"
-            aria-label={`Format text to underlined. Shortcut: ${SHORTCUTS.UNDERLINE}`}>
+            aria-label={`Format text to underlined. Shortcut: ${shortcut('UNDERLINE')}`}>
             <i className="format underline" />
           </button>
           {canViewerSeeInsertCodeButton && (
@@ -1133,7 +1148,7 @@ export default function ToolbarPlugin({
               className={
                 'toolbar-item spaced ' + (toolbarState.isCode ? 'active' : '')
               }
-              title={`Insert code block (${SHORTCUTS.INSERT_CODE_BLOCK})`}
+              title={`Insert code block (${shortcut('INSERT_CODE_BLOCK')})`}
               type="button"
               aria-label="Insert code block">
               <i className="format code" />
@@ -1146,9 +1161,18 @@ export default function ToolbarPlugin({
               'toolbar-item spaced ' + (toolbarState.isLink ? 'active' : '')
             }
             aria-label="Insert link"
-            title={`Insert link (${SHORTCUTS.INSERT_LINK})`}
+            title={`Insert link (${shortcut('INSERT_LINK')})`}
             type="button">
             <i className="format link" />
+          </button>
+          <button
+            disabled={!isEditable}
+            onClick={insertRuby}
+            className="toolbar-item spaced"
+            aria-label="Insert ruby annotation"
+            title="Insert ruby annotation"
+            type="button">
+            <i className="format ruby" />
           </button>
           <DropdownColorPicker
             disabled={!isEditable}
@@ -1187,7 +1211,7 @@ export default function ToolbarPlugin({
                 <i className="icon lowercase" />
                 <span className="text">Lowercase</span>
               </div>
-              <span className="shortcut">{SHORTCUTS.LOWERCASE}</span>
+              <span className="shortcut">{shortcut('LOWERCASE')}</span>
             </DropDownItem>
             <DropDownItem
               onClick={e =>
@@ -1202,7 +1226,7 @@ export default function ToolbarPlugin({
                 <i className="icon uppercase" />
                 <span className="text">Uppercase</span>
               </div>
-              <span className="shortcut">{SHORTCUTS.UPPERCASE}</span>
+              <span className="shortcut">{shortcut('UPPERCASE')}</span>
             </DropDownItem>
             <DropDownItem
               onClick={e =>
@@ -1217,7 +1241,7 @@ export default function ToolbarPlugin({
                 <i className="icon capitalize" />
                 <span className="text">Capitalize</span>
               </div>
-              <span className="shortcut">{SHORTCUTS.CAPITALIZE}</span>
+              <span className="shortcut">{shortcut('CAPITALIZE')}</span>
             </DropDownItem>
             <DropDownItem
               onClick={e =>
@@ -1232,7 +1256,7 @@ export default function ToolbarPlugin({
                 <i className="icon strikethrough" />
                 <span className="text">Strikethrough</span>
               </div>
-              <span className="shortcut">{SHORTCUTS.STRIKETHROUGH}</span>
+              <span className="shortcut">{shortcut('STRIKETHROUGH')}</span>
             </DropDownItem>
             <DropDownItem
               onClick={e =>
@@ -1247,7 +1271,7 @@ export default function ToolbarPlugin({
                 <i className="icon subscript" />
                 <span className="text">Subscript</span>
               </div>
-              <span className="shortcut">{SHORTCUTS.SUBSCRIPT}</span>
+              <span className="shortcut">{shortcut('SUBSCRIPT')}</span>
             </DropDownItem>
             <DropDownItem
               onClick={e =>
@@ -1262,7 +1286,7 @@ export default function ToolbarPlugin({
                 <i className="icon superscript" />
                 <span className="text">Superscript</span>
               </div>
-              <span className="shortcut">{SHORTCUTS.SUPERSCRIPT}</span>
+              <span className="shortcut">{shortcut('SUPERSCRIPT')}</span>
             </DropDownItem>
             <DropDownItem
               onClick={e =>
@@ -1287,7 +1311,7 @@ export default function ToolbarPlugin({
                 <i className="icon clear" />
                 <span className="text">Clear Formatting</span>
               </div>
-              <span className="shortcut">{SHORTCUTS.CLEAR_FORMATTING}</span>
+              <span className="shortcut">{shortcut('CLEAR_FORMATTING')}</span>
             </DropDownItem>
           </DropDown>
           <ExtensionComponent lexical:extension={PagesReactExtension} />
@@ -1456,17 +1480,6 @@ export default function ToolbarPlugin({
         editor={activeEditor}
         isRTL={toolbarState.isRTL}
       />
-      <Divider />
-      <button
-        type="button"
-        className="toolbar-item spaced"
-        title="Keyboard shortcuts"
-        aria-label="Show keyboard shortcuts"
-        onClick={() =>
-          showModal('Keyboard shortcuts', () => <ShortcutsHelpDialog />)
-        }>
-        <span className="text">?</span>
-      </button>
 
       {modal}
     </div>

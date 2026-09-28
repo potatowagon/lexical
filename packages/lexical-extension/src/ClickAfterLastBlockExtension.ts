@@ -12,8 +12,8 @@ import {
   $isDecoratorNode,
   $isElementNode,
   defineExtension,
-  LexicalEditor,
-  LexicalNode,
+  type LexicalEditor,
+  type LexicalNode,
   registerEventListeners,
   safeCast,
   stopLexicalPropagation,
@@ -128,9 +128,9 @@ function shouldClaimClick(
  *
  * Closes #8544.
  */
-export const ClickAfterLastBlockExtension = /* @__PURE__ */ defineExtension({
+export const ClickAfterLastBlockExtension = defineExtension({
   build: (_editor, config): ClickAfterLastBlockOutput => namedSignals(config),
-  config: /* @__PURE__ */ safeCast<ClickAfterLastBlockConfig>({
+  config: safeCast<ClickAfterLastBlockConfig>({
     $shouldInsertAfter: $defaultShouldInsertAfter,
     disabled: false,
   }),

@@ -16,8 +16,6 @@
  *
  */
 
-import type {EditorState, LexicalEditor, RangeSelection} from 'lexical';
-
 import {createHeadlessEditor} from '@lexical/headless';
 import {withDOM} from '@lexical/headless/dom';
 import {$generateHtmlFromNodes} from '@lexical/html';
@@ -29,7 +27,10 @@ import {
   $getSelection,
   COMMAND_PRIORITY_NORMAL,
   CONTROLLED_TEXT_INSERTION_COMMAND,
+  type EditorState,
+  type LexicalEditor,
   ParagraphNode,
+  type RangeSelection,
 } from 'lexical';
 import {beforeEach, describe, expect, it, vi} from 'vitest';
 
@@ -66,6 +67,15 @@ describe('LexicalHeadlessEditor', () => {
     expect(typeof window === 'undefined').toBe(true);
     expect(typeof document === 'undefined').toBe(true);
     expect(typeof navigator === 'undefined' || isEmptyNavigator()).toBe(true);
+  });
+
+  it('throws from DOM-only methods', () => {
+    expect(() => editor.getRootElement()).toThrow(
+      'getRootElement is not supported in headless mode',
+    );
+    expect(() => editor.registerRootListener(() => {})).toThrow(
+      'registerRootListener is not supported in headless mode',
+    );
   });
 
   it('can update editor', async () => {

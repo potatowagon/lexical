@@ -6,8 +6,6 @@
  *
  */
 
-import type {LexicalEditor, LexicalNode, NodeKey} from 'lexical';
-
 import {
   $isCodeHighlightNode,
   $isCodeNode,
@@ -17,6 +15,7 @@ import {
   CodeIndentExtension,
   CodeNode,
   DEFAULT_CODE_LANGUAGE,
+  registerCodeGutter,
   registerCodeIndentation,
 } from '@lexical/code-core';
 import {effect, namedSignals} from '@lexical/extension';
@@ -30,7 +29,10 @@ import {
   $isTextNode,
   $onUpdate,
   defineExtension,
+  type LexicalEditor,
+  type LexicalNode,
   mergeRegister,
+  type NodeKey,
   safeCast,
   TextNode,
 } from 'lexical';
@@ -93,30 +95,6 @@ function $textNodeTransform(
     // code highlight nodes converted back to normal text
     node.replace($createTextNode(node.__text));
   }
-}
-
-function updateCodeGutter(node: CodeNode, editor: LexicalEditor): void {
-  const codeElement = editor.getElementByKey(node.getKey());
-  if (codeElement === null) {
-    return;
-  }
-  const children = node.getChildren();
-  const childrenLength = children.length;
-  // @ts-ignore: internal field
-  if (childrenLength === codeElement.__cachedChildrenLength) {
-    // Avoid updating the attribute if the children length hasn't changed.
-    return;
-  }
-  // @ts-ignore:: internal field
-  codeElement.__cachedChildrenLength = childrenLength;
-  let gutter = '1';
-  let count = 1;
-  for (let i = 0; i < childrenLength; i++) {
-    if ($isLineBreakNode(children[i])) {
-      gutter += '\n' + ++count;
-    }
-  }
-  codeElement.setAttribute('data-gutter', gutter);
 }
 
 interface TransformState {
@@ -242,6 +220,17 @@ function $updateAndRetainSelection(
   }
 
   const anchor = selection.anchor;
+  // The selection is restored by walking this code node's children, so it can
+  // only be retained when it actually points inside this code node. When the
+  // selection lives elsewhere there is nothing to retain and restoring would
+  // drag the caret into the code block instead of leaving it where the user
+  // put it.
+  const anchorNode = anchor.getNode();
+  if (anchorNode !== node && !node.isParentOf(anchorNode)) {
+    updateFn();
+    return;
+  }
+
   const anchorOffset = anchor.offset;
   const isNewLineAnchor =
     anchor.type === 'element' &&
@@ -250,7 +239,6 @@ function $updateAndRetainSelection(
 
   // Calculating previous text offset (all text node prior to anchor + anchor own text offset)
   if (!isNewLineAnchor) {
-    const anchorNode = anchor.getNode();
     textOffset =
       anchorOffset +
       anchorNode.getPreviousSiblings().reduce((offset, _node) => {
@@ -271,19 +259,30 @@ function $updateAndRetainSelection(
   }
 
   // If it was non-element anchor then we walk through child nodes
-  // and looking for a position of original text offset
-  node.getChildren().some(_node => {
-    const isText = $isTextNode(_node);
-    if (isText || $isLineBreakNode(_node)) {
-      const textContentSize = _node.getTextContentSize();
-      if (isText && textContentSize >= textOffset) {
-        _node.select(textOffset, textOffset);
-        return true;
+  // and looking for a position of original text offset. A LineBreakNode
+  // consumes one unit of the offset but can't host a text point, so when the
+  // offset lands on one we use an element point on the code node instead of
+  // letting the offset go negative and selecting the next text node at an
+  // out-of-range position.
+  const children = node.getChildren();
+  for (let index = 0; index < children.length; index++) {
+    const child = children[index];
+    if ($isTextNode(child)) {
+      const textContentSize = child.getTextContentSize();
+      if (textContentSize >= textOffset) {
+        child.select(textOffset, textOffset);
+        return;
       }
       textOffset -= textContentSize;
+    } else if ($isLineBreakNode(child)) {
+      if (textOffset === 0) {
+        node.select(index, index);
+        return;
+      }
+      textOffset -= 1;
     }
-    return false;
-  });
+  }
+  node.select(children.length, children.length);
 }
 
 // Finds minimal diff range between two nodes lists. It returns from/to range boundaries of prevNodes
@@ -373,27 +372,7 @@ export function registerHighlightingOnly(
 ): () => void {
   const registrations = [];
 
-  // Only register the mutation listener if not in headless mode
-  if (editor._headless !== true) {
-    registrations.push(
-      editor.registerMutationListener(
-        CodeNode,
-        mutations => {
-          editor.read('latest', () => {
-            for (const [key, type] of mutations) {
-              if (type !== 'destroyed') {
-                const node = $getNodeByKey(key);
-                if (node !== null) {
-                  updateCodeGutter(node as CodeNode, editor);
-                }
-              }
-            }
-          });
-        },
-        {skipInitialization: false},
-      ),
-    );
-  }
+  registrations.push(registerCodeGutter(editor));
 
   const transformState: TransformState = {
     didTransform: false,
@@ -458,9 +437,9 @@ export interface CodeShikiConfig {
  * and the related keyboard handlers are activated automatically. Set
  * `tabSize` on `CodeIndentExtension` to enable space-indent outdent.
  */
-export const CodeShikiExtension = /* @__PURE__ */ defineExtension({
+export const CodeShikiExtension = defineExtension({
   build: (editor, config) => namedSignals(config),
-  config: /* @__PURE__ */ safeCast<CodeShikiConfig>({
+  config: safeCast<CodeShikiConfig>({
     disabled: false,
     tokenizer: ShikiTokenizer,
   }),
@@ -495,8 +474,8 @@ export type CodeHighlighterShikiConfig = Tokenizer;
  * `configExtension(CodeHighlighterShikiExtension, customTokenizer)`
  * continue to work without modification.
  */
-export const CodeHighlighterShikiExtension = /* @__PURE__ */ defineExtension({
-  config: /* @__PURE__ */ safeCast<CodeHighlighterShikiConfig>(ShikiTokenizer),
+export const CodeHighlighterShikiExtension = defineExtension({
+  config: safeCast<CodeHighlighterShikiConfig>(ShikiTokenizer),
   dependencies: [CodeShikiExtension],
   init: (editorConfig, config, state) => {
     // Forward the flat Tokenizer config to CodeShikiExtension's `tokenizer`

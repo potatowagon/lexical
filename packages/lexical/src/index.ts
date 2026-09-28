@@ -31,6 +31,7 @@ export {
   $comparePointCaretNext,
   $extendCaretToRange,
   $getAdjacentChildCaret,
+  $getCaretInDirection,
   $getCaretRange,
   $getChildCaret,
   $getChildCaretOrSelf,
@@ -53,10 +54,10 @@ export {
   $caretFromPoint,
   $caretRangeFromSelection,
   $getAdjacentSiblingOrParentSiblingCaret,
-  $getCaretInDirection,
   $getCaretRangeInDirection,
   $getChildCaretAtIndex,
   $insertNodeToNearestRootAtCaret,
+  $isBlockFullySelected,
   $isExtendableTextPointCaret,
   $normalizeCaret,
   $removeTextFromCaretRange,
@@ -118,6 +119,7 @@ export {
   SELECT_ALL_COMMAND,
   SELECTION_CHANGE_COMMAND,
   SELECTION_INSERT_CLIPBOARD_NODES_COMMAND,
+  SET_TEXT_FORMAT_COMMAND,
   UNDO_COMMAND,
 } from './LexicalCommands';
 export {
@@ -136,9 +138,11 @@ export {
 export type {DOMSlot} from './LexicalDOMSlot';
 export type {ElementDOMSlot} from './LexicalDOMSlot';
 export type {
+  AnyLexicalCommand,
   CommandListener,
   CommandListenerPriority,
   CommandListenerPriorityBefore,
+  CommandPayloadArgs,
   CommandPayloadType,
   CreateEditorArgs,
   DOMSlotForNode,
@@ -182,13 +186,24 @@ export {
   getTransformSetFromKlass,
 } from './LexicalEditor';
 export type {
+  CompactSerializedEditorState,
   EditorState,
   EditorStateReadOptions,
+  ParsableSerializedEditorState,
   SerializedEditorState,
 } from './LexicalEditorState';
 export {$isEditorState} from './LexicalEditorState';
-export type {EventHandler} from './LexicalEvents';
+export type {EventHandler, KeyDownShortcut} from './LexicalEvents';
 export {stopLexicalPropagation} from './LexicalEvents';
+export type {GeneratedJSON, GeneratedJSONFactory} from './LexicalGeneratedJSON';
+export type {CompiledKeyboardShortcuts} from './LexicalKeyboardShortcuts';
+export {
+  compileKeyboardShortcuts,
+  CONTROL_OR_ALT,
+  CONTROL_OR_META,
+  type KeyboardShortcut,
+  type KeyboardShortcutMatch,
+} from './LexicalKeyboardShortcuts';
 export type {
   AbstractStaticNodeConfigRecord,
   BaseStaticNodeConfig,
@@ -204,10 +219,14 @@ export type {
   DOMExportOutputMap,
   LexicalExportJSON,
   LexicalNode,
+  LexicalParseJSON,
   LexicalUpdateJSON,
   NodeKey,
   NodeMap,
+  ParsableSerializedNode,
   SerializedLexicalNode,
+  SerializedPartial,
+  SerializedPartialNode,
   SlotChildNode,
   SlotHostNode,
   StaticNodeConfig,
@@ -225,6 +244,7 @@ export {
   type AnyStateConfig,
   createSharedNodeState,
   createState,
+  type LexicalSchemaInput,
   NODE_STATE_DIRECT,
   NODE_STATE_LATEST,
   type NodeStateJSON,
@@ -239,6 +259,54 @@ export {
 export {$normalizeSelection as $normalizeSelection__EXPERIMENTAL} from './LexicalNormalization';
 export type {RefCountedRegistry} from './LexicalRefCountedRegistry';
 export {createRefCountedRegistry} from './LexicalRefCountedRegistry';
+export {
+  aliasedValue,
+  aliasTableOf,
+  type AnySerializationSchema,
+  arrayValue,
+  booleanValue,
+  type ComposedSchemaFields,
+  declaredAccepts,
+  enumValue,
+  type FieldOptions,
+  getterTableOf,
+  type InnerSerializationSchema,
+  type InnerSerializationSchemaFields,
+  isSchemaField,
+  type MemberOf,
+  type NamesOf,
+  nodeSchema,
+  type NodeSchemaMeta,
+  type NodeSerializationSchema,
+  nullable,
+  numberValue,
+  type NumberValueOptions,
+  objectValue,
+  optional,
+  type Parse,
+  rawValue,
+  type SchemaAccessor,
+  type SchemaAccessors,
+  type SchemaField,
+  type SchemaFieldBase,
+  type SchemaGetterAccessor,
+  type SchemaGetterField,
+  type SchemaInput,
+  type SchemaSetterAccessor,
+  type SchemaSetterField,
+  type SerializationSchema,
+  type SerializationSchemaFields,
+  type SerializationSchemaMeta,
+  type SerializationSchemaShape,
+  type SerializationSchemaValue,
+  setterDefaultOf,
+  setterTableOf,
+  stringValue,
+  transformValue,
+  unionValue,
+  withAccessors,
+  withField,
+} from './LexicalSchema';
 export type {
   BaseSelection,
   ElementPointType as ElementPoint,
@@ -263,12 +331,20 @@ export {
   $isBlockElementNode,
   $isNodeSelection,
   $isRangeSelection,
+  $setTextFormat,
   $updateDOMSelection,
+  INTERNAL_$expandSelectionToWholeDocument,
   type RawTextVisitor,
   tokenizeRawText,
 } from './LexicalSelection';
+export {
+  $exportNodeJSON,
+  $isCompactExport,
+  $withCompactExport,
+} from './LexicalSerializedExport';
 export type {SlotName} from './LexicalSlot';
 export {
+  $getSelectionSlotFrame,
   $getSlot,
   $getSlotFrame,
   $getSlotHost,
@@ -282,6 +358,7 @@ export {
 } from './LexicalSlot';
 export {
   $assumeActiveEditor,
+  $flushSyncAfterUpdate,
   $fullReconcile,
   $parseSerializedNode,
   isCurrentlyReadOnlyMode,
@@ -296,6 +373,7 @@ export {
   $createChildrenArray,
   $findMatchingParent,
   $getAdjacentNode,
+  $getDocument,
   $getDOMSlot,
   $getDOMTextNode,
   $getEditor,
@@ -327,11 +405,14 @@ export {
   $setFormatFromDOM,
   $setSelection,
   $splitNode,
+  type CompactDefaultTest,
+  CONTROL_OR_OTHER_KEY,
   type DOMSelectionBoundaryPoints,
   findAllLexicalElementsDeep,
   getActiveElement,
   getActiveElementDeep,
   getComposedEventTarget,
+  getComposedSchemaFields,
   getComposedStaticRange,
   getDOMOwnerDocument,
   getDOMSelection,
@@ -370,6 +451,10 @@ export {
   isSelectionCapturedInDecoratorInput,
   isSelectionWithinEditor,
   iterStaticNodeConfigChain,
+  type KeyboardEventControlOrOther,
+  keyboardEventMaskForPlatform,
+  type KeyboardEventModifierMask,
+  type KeyboardEventModifiers,
   mountSlotContainer,
   type OwnStaticNodeConfig,
   removeFromParent,

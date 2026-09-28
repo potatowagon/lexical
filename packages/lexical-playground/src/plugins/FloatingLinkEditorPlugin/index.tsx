@@ -5,7 +5,6 @@
  * LICENSE file in the root directory of this source tree.
  *
  */
-import type {JSX} from 'react';
 
 import './index.css';
 
@@ -21,7 +20,7 @@ import {
   $createLinkNode,
   $isAutoLinkNode,
   $isLinkNode,
-  LinkNode,
+  type LinkNode,
   TOGGLE_LINK_COMMAND,
 } from '@lexical/link';
 import {useLexicalComposerContext} from '@lexical/react/LexicalComposerContext';
@@ -32,7 +31,8 @@ import {
   $isLineBreakNode,
   $isNodeSelection,
   $isRangeSelection,
-  BaseSelection,
+  $onUpdate,
+  type BaseSelection,
   CLICK_COMMAND,
   COMMAND_PRIORITY_CRITICAL,
   COMMAND_PRIORITY_HIGH,
@@ -44,14 +44,21 @@ import {
   getParentElement,
   getRootOwnerDocument,
   KEY_ESCAPE_COMMAND,
-  LexicalEditor,
+  type LexicalEditor,
   mergeRegister,
-  RangeSelection,
+  type RangeSelection,
   registerEventListener,
   SELECTION_CHANGE_COMMAND,
 } from 'lexical';
 import * as React from 'react';
-import {Dispatch, useCallback, useEffect, useRef, useState} from 'react';
+import {
+  type Dispatch,
+  type JSX,
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+} from 'react';
 import {createPortal} from 'react-dom';
 
 import {getSelectedNode} from '../../utils/getSelectedNode';
@@ -246,7 +253,7 @@ function FloatingLinkEditor({
       editor.registerCommand(
         SELECTION_CHANGE_COMMAND,
         () => {
-          $updateLinkEditor();
+          $onUpdate(() => editor.read('latest', $updateLinkEditor));
           return true;
         },
         COMMAND_PRIORITY_LOW,
@@ -424,6 +431,14 @@ function useFloatingLinkEditorToolbar(
 
   useEffect(() => {
     function $updateToolbar() {
+      if (!editor.isEditable()) {
+        // The link editor is an editing affordance (edit / delete the link),
+        // and `$updateLinkEditor` does not even resolve a URL for it while the
+        // editor is read-only. Clicking a link in read-only mode follows it
+        // (ClickableLinkExtension), so there is nothing to pop up.
+        setIsLink(false);
+        return;
+      }
       const selection = $getSelection();
       if ($isRangeSelection(selection)) {
         const focusLinkNode = $getSelectedLinkNode(selection);
@@ -472,6 +487,13 @@ function useFloatingLinkEditorToolbar(
       }
     }
     return mergeRegister(
+      // Close an open link editor the moment the editor becomes read-only,
+      // rather than leaving the last one on screen until the next update.
+      editor.registerEditableListener(editable => {
+        if (!editable) {
+          setIsLink(false);
+        }
+      }),
       editor.registerUpdateListener(({editorState}) => {
         editorState.read(() => {
           $updateToolbar();

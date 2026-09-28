@@ -24,6 +24,8 @@
  * prefix. (NB: '$' couldn't be used as the prefix because it breaks XmlElement.toDOM().)
  */
 
+import type {BindingV2} from './Bindings';
+
 import invariant from '@lexical/internal/invariant';
 import {
   $getSelection,
@@ -37,21 +39,21 @@ import {
   $setSlot,
   ElementNode,
   getDeclaredSlots,
-  LexicalNode,
-  NodeKey,
+  type LexicalNode,
+  type NodeKey,
   RootNode,
   TextNode,
 } from 'lexical';
 import {
   ContentFormat,
   ContentString,
-  Doc as YDoc,
-  ID,
+  type Doc as YDoc,
+  type ID,
   isDeleted,
-  Item,
+  type Item,
   Map as YMap,
   Snapshot,
-  Text as YText,
+  type Text as YText,
   typeListToArraySnapshot,
   typeMapGetAllSnapshot,
   XmlElement,
@@ -59,13 +61,13 @@ import {
   XmlText,
 } from 'yjs';
 
-import {BindingV2} from './Bindings';
 import simpleDiffWithCursor from './simpleDiffWithCursor';
 import {
   $isSlotValueNode,
   $syncPropertiesFromYjs,
   getDefaultNodeProperties,
   isReservedSlotName,
+  ROOT_NODE_NAME,
   setSlotsAttr,
   SLOTS_ATTR_KEY,
 } from './Utils';
@@ -83,9 +85,8 @@ type TextAttributes = {
   ychange?: Record<string, unknown>;
 };
 
-// https://docs.yjs.dev/api/shared-types/y.xmlelement
-// "Define a top-level type; Note that the nodeName is always "undefined""
-const isRootElement = (el: XmlElement): boolean => el.nodeName === 'UNDEFINED';
+const isRootElement = (el: XmlElement): boolean =>
+  el.nodeName === ROOT_NODE_NAME;
 
 export const $createOrUpdateNodeFromYElement = (
   el: XmlElement,

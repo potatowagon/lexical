@@ -6,27 +6,6 @@
  *
  */
 
-import type {
-  CaretDirection,
-  CommandPayloadType,
-  DOMConversionMap,
-  DOMConversionOutput,
-  DOMExportOutput,
-  EditorConfig,
-  ElementFormatType,
-  LexicalCommand,
-  LexicalEditor,
-  LexicalNode,
-  LexicalUpdateJSON,
-  NodeKey,
-  NodeSelection,
-  ParagraphNode,
-  RangeSelection,
-  SerializedElementNode,
-  Spread,
-  TextFormatType,
-} from 'lexical';
-
 import {
   $getClipboardDataFromSelection,
   $handleRichTextDrop,
@@ -36,7 +15,7 @@ import {
   copyToClipboard,
   setLexicalClipboardDataTransfer,
 } from '@lexical/clipboard';
-import {ReadonlySignal, signal} from '@lexical/extension';
+import {type ReadonlySignal, signal} from '@lexical/extension';
 import {
   $isParentRTL,
   $moveCharacter,
@@ -52,27 +31,34 @@ import {
   $applyNodeReplacement,
   $caretFromPoint,
   $comparePointCaretNext,
+  $createNodeSelection,
   $createParagraphNode,
   $createRangeSelection,
   $createTabNode,
   $extendCaretToRange,
   $findMatchingParent,
+  $flushSyncAfterUpdate,
   $formatText,
-  $getAdjacentNode,
   $getCaretRange,
+  $getCaretRangeInDirection,
   $getChildCaret,
   $getCollapsedCaretRange,
+  $getDocument,
+  $getEditor,
   $getNearestNodeFromDOMNode,
   $getRoot,
   $getSelection,
   $getSiblingCaret,
   $getSlotFrame,
+  $getState,
+  $hasAncestor,
   $insertNodes,
   $isDecoratorNode,
   $isElementNode,
   $isNodeSelection,
   $isRangeSelection,
   $isRootNode,
+  $isRootOrShadowRoot,
   $isSelectionCapturedInDecoratorInput,
   $isShadowRootNode,
   $isSiblingCaret,
@@ -80,33 +66,46 @@ import {
   $needsBlockCursorBeside,
   $normalizeCaret,
   $normalizeSelection__EXPERIMENTAL,
+  $rewindSiblingCaret,
   $selectAll,
   $setDirectionFromDOM,
   $setFormatFromDOM,
   $setSelection,
   $setSelectionFromCaretRange,
+  $setState,
+  $setTextFormat,
   addClassNamesToElement,
+  booleanValue,
   CAN_USE_BEFORE_INPUT,
+  type CaretDirection,
   CLICK_COMMAND,
   COMMAND_PRIORITY_EDITOR,
+  type CommandPayloadType,
   CONTROLLED_TEXT_INSERTION_COMMAND,
   COPY_COMMAND,
   createCommand,
+  createState,
   CUT_COMMAND,
   CUT_TAG,
   DELETE_CHARACTER_COMMAND,
   DELETE_LINE_COMMAND,
   DELETE_WORD_COMMAND,
+  type DOMConversionOutput,
+  type DOMExportOutput,
   DRAGOVER_COMMAND,
   DRAGSTART_COMMAND,
   DROP_COMMAND,
+  type EditorConfig,
   ElementNode,
+  enumValue,
   FORMAT_ELEMENT_COMMAND,
   FORMAT_TEXT_COMMAND,
+  getDOMSelection,
   INDENT_CONTENT_COMMAND,
   INSERT_LINE_BREAK_COMMAND,
   INSERT_PARAGRAPH_COMMAND,
   INSERT_TAB_COMMAND,
+  INTERNAL_$expandSelectionToWholeDocument,
   IS_APPLE_WEBKIT,
   IS_IOS,
   IS_SAFARI,
@@ -122,16 +121,36 @@ import {
   KEY_ESCAPE_COMMAND,
   KEY_SPACE_COMMAND,
   KEY_TAB_COMMAND,
+  type LexicalCommand,
+  type LexicalEditor,
+  type LexicalNode,
+  type LexicalParseJSON,
   mergeRegister,
   MOVE_TO_END,
   MOVE_TO_START,
+  type NodeKey,
+  nodeSchema,
+  type NodeSelection,
   OUTDENT_CONTENT_COMMAND,
+  type ParagraphNode,
   PASTE_COMMAND,
   PASTE_TAG,
+  type RangeSelection,
   REMOVE_TEXT_COMMAND,
   SELECT_ALL_COMMAND,
+  type SerializedElementNode,
+  type SerializedPartial,
+  SET_TEXT_FORMAT_COMMAND,
   setNodeIndentFromDOM,
+  type Spread,
+  type TextFormatType,
+  withField,
 } from 'lexical';
+
+import {
+  GENERATED_HEADING,
+  GENERATED_QUOTE,
+} from './LexicalRichTextGeneratedJSON';
 
 export type SerializedHeadingNode = Spread<
   {
@@ -140,39 +159,93 @@ export type SerializedHeadingNode = Spread<
   SerializedElementNode
 >;
 
-export const DRAG_DROP_PASTE: LexicalCommand<File[]> =
-  /* @__PURE__ */ createCommand('DRAG_DROP_PASTE_FILE');
+export const DRAG_DROP_PASTE: LexicalCommand<File[]> = createCommand(
+  'DRAG_DROP_PASTE_FILE',
+);
 
-export type SerializedQuoteNode = SerializedElementNode;
+export type SerializedQuoteNode = Spread<
+  {
+    /**
+     * Present (and `true`) only when the quote has opted in to shadow
+     * root behavior via {@link QuoteNode.setIsShadowRoot} or
+     * `$createQuoteNode({shadowRoot: true})`. Omitted otherwise, so the
+     * serialization of quotes that have not opted in is unchanged.
+     */
+    shadowRoot?: boolean;
+  },
+  SerializedElementNode
+>;
+
+/**
+ * Opt-in state for {@link QuoteNode.isShadowRoot}. When `true`, the quote
+ * behaves like a multi-block region (similar to a table cell): it holds
+ * block-level children (paragraphs, headings, ...) instead of inline
+ * content, which allows more faithful HTML and Markdown import/export of
+ * `<blockquote>` content. Defaults to `false`, in which case there is no
+ * change to the legacy behavior (and nothing extra is serialized).
+ */
+export const quoteShadowRootState = createState('shadowRoot', {
+  // `booleanValue()`, not `Boolean`: the state's own serializer only ever
+  // writes `true`/`false`, so anything else was never produced by Lexical and
+  // is out of domain rather than a legacy form to coerce.
+  parse: booleanValue(),
+});
+
+// The serialized shape this node exports; the runtime implementation is the
+// schema-driven LexicalNode.exportJSON.
+// eslint-disable-next-line @typescript-eslint/no-unsafe-declaration-merging
+export interface QuoteNode {
+  exportJSON(compact?: false): SerializedQuoteNode;
+  exportJSON(compact: boolean): SerializedPartial<SerializedQuoteNode>;
+}
 
 /** @noInheritDoc */
+// eslint-disable-next-line @typescript-eslint/no-unsafe-declaration-merging
 export class QuoteNode extends ElementNode {
-  static getType(): string {
-    return 'quote';
+  $config() {
+    return this.config('quote', {
+      extends: ElementNode,
+      generated: GENERATED_QUOTE,
+      importDOM: {
+        blockquote: () => ({
+          conversion: $convertBlockquoteElement,
+          priority: 0,
+        }),
+      },
+      stateConfigs: [{flat: true, stateConfig: quoteShadowRootState}],
+    });
   }
 
-  static clone(node: QuoteNode): QuoteNode {
-    return new QuoteNode(node.__key);
+  /**
+   * `true` when this quote has opted in to shadow root behavior with
+   * {@link setIsShadowRoot} or `$createQuoteNode({shadowRoot: true})`,
+   * in which case it contains block-level children rather than inline
+   * content. `false` (the legacy inline-content behavior) by default.
+   */
+  isShadowRoot(): boolean {
+    return $getState(this, quoteShadowRootState);
+  }
+
+  /**
+   * Opt this quote in to (or out of) shadow root behavior. See
+   * {@link quoteShadowRootState}. Note that this does not restructure any
+   * existing children; a shadow root quote is expected to contain
+   * block-level children (non-element children will be normalized into
+   * paragraphs by the built-in shadow root transform).
+   */
+  setIsShadowRoot(isShadowRoot: boolean): this {
+    return $setState(this, quoteShadowRootState, isShadowRoot);
   }
 
   // View
 
   createDOM(config: EditorConfig): HTMLElement {
-    const element = document.createElement('blockquote');
+    const element = $getDocument().createElement('blockquote');
     addClassNamesToElement(element, config.theme.quote);
     return element;
   }
-  updateDOM(prevNode: this, dom: HTMLElement): boolean {
+  updateDOM(prevNode: this, dom: HTMLElement, config: EditorConfig): boolean {
     return false;
-  }
-
-  static importDOM(): DOMConversionMap | null {
-    return {
-      blockquote: (node: Node) => ({
-        conversion: $convertBlockquoteElement,
-        priority: 0,
-      }),
-    };
   }
 
   exportDOM(editor: LexicalEditor): DOMExportOutput {
@@ -180,7 +253,7 @@ export class QuoteNode extends ElementNode {
 
     if (isHTMLElement(element)) {
       if (this.isEmpty()) {
-        element.append(document.createElement('br'));
+        element.append($getDocument().createElement('br'));
       }
 
       const formatType = this.getFormatType();
@@ -199,21 +272,40 @@ export class QuoteNode extends ElementNode {
     };
   }
 
-  static importJSON(serializedNode: SerializedQuoteNode): QuoteNode {
+  static importJSON(
+    serializedNode: SerializedPartial<SerializedQuoteNode>,
+  ): QuoteNode {
     return $createQuoteNode().updateFromJSON(serializedNode);
   }
 
   // Mutation
 
-  insertNewAfter(_: RangeSelection, restoreSelection?: boolean): ParagraphNode {
+  insertNewAfter(
+    rangeSelection: RangeSelection,
+    restoreSelection?: boolean,
+  ): ParagraphNode {
     const newBlock = $createParagraphNode();
+    newBlock.setTextFormat(rangeSelection.format);
+    newBlock.setTextStyle(rangeSelection.style);
     const direction = this.getDirection();
     newBlock.setDirection(direction);
+    newBlock.setFormat(this.getFormatType());
+    newBlock.setStyle(this.getStyle());
     this.insertAfter(newBlock, restoreSelection);
     return newBlock;
   }
 
   collapseAtStart(): true {
+    if (this.isShadowRoot()) {
+      // A shadow root quote holds block-level children, so collapsing
+      // dissolves the quote and lifts the blocks out as siblings rather
+      // than merging them into a single paragraph.
+      for (const child of this.getChildren()) {
+        this.insertBefore(child);
+      }
+      this.remove();
+      return true;
+    }
     const paragraph = $createParagraphNode();
     const children = this.getChildren();
     children.forEach(child => paragraph.append(child));
@@ -226,8 +318,15 @@ export class QuoteNode extends ElementNode {
   }
 }
 
-export function $createQuoteNode(): QuoteNode {
-  return $applyNodeReplacement(new QuoteNode());
+export function $createQuoteNode(options?: {
+  /**
+   * When `true` the quote opts in to shadow root behavior
+   * (see {@link quoteShadowRootState}). Defaults to `false`.
+   */
+  shadowRoot?: boolean;
+}): QuoteNode {
+  const node = $applyNodeReplacement(new QuoteNode());
+  return options && options.shadowRoot ? node.setIsShadowRoot(true) : node;
 }
 
 export function $isQuoteNode(
@@ -238,22 +337,68 @@ export function $isQuoteNode(
 
 export type HeadingTagType = 'h1' | 'h2' | 'h3' | 'h4' | 'h5' | 'h6';
 
+// Single source of truth for parsing the node-specific properties of a
+// SerializedHeadingNode (those it adds over a SerializedElementNode).
+const headingNodeSchema = nodeSchema<HeadingNode>()({
+  // The tag *is* the field in both directions; getTag/setTag are bare
+  // accessors, so a subclass overriding either reclaims the property.
+  tag: withField(enumValue(['h1', 'h2', 'h3', 'h4', 'h5', 'h6']), {
+    field: '__tag',
+  }),
+});
+
+// eslint-disable-next-line @typescript-eslint/no-unsafe-declaration-merging
+export interface HeadingNode {
+  exportJSON(compact?: false): SerializedHeadingNode;
+  exportJSON(compact: boolean): SerializedPartial<SerializedHeadingNode>;
+  updateFromJSON(serializedNode: LexicalParseJSON<SerializedHeadingNode>): this;
+}
+
 /** @noInheritDoc */
+// eslint-disable-next-line @typescript-eslint/no-unsafe-declaration-merging
 export class HeadingNode extends ElementNode {
   /** @internal */
   __tag: HeadingTagType;
 
-  static getType(): string {
-    return 'heading';
-  }
-
-  static clone(node: HeadingNode): HeadingNode {
-    return new HeadingNode(node.__tag, node.__key);
-  }
-
-  afterCloneFrom(prevNode: this): void {
-    super.afterCloneFrom(prevNode);
-    this.__tag = prevNode.__tag;
+  $config() {
+    return this.config('heading', {
+      extends: ElementNode,
+      generated: GENERATED_HEADING,
+      importDOM: {
+        h1: () => ({conversion: $convertHeadingElement, priority: 0}),
+        h2: () => ({conversion: $convertHeadingElement, priority: 0}),
+        h3: () => ({conversion: $convertHeadingElement, priority: 0}),
+        h4: () => ({conversion: $convertHeadingElement, priority: 0}),
+        h5: () => ({conversion: $convertHeadingElement, priority: 0}),
+        h6: () => ({conversion: $convertHeadingElement, priority: 0}),
+        p: (node: Node) => {
+          // domNode is a <p> since we matched it by nodeName
+          const paragraph = node as HTMLParagraphElement;
+          const firstChild = paragraph.firstChild;
+          if (firstChild !== null && isGoogleDocsTitle(firstChild)) {
+            return {
+              conversion: () => ({node: null}),
+              priority: 3,
+            };
+          }
+          return null;
+        },
+        span: (node: Node) => {
+          if (isGoogleDocsTitle(node)) {
+            return {
+              conversion: () => {
+                return {
+                  node: $createHeadingNode('h1'),
+                };
+              },
+              priority: 3,
+            };
+          }
+          return null;
+        },
+      },
+      json: headingNodeSchema,
+    });
   }
 
   constructor(tag: HeadingTagType = 'h1', key?: NodeKey) {
@@ -275,7 +420,7 @@ export class HeadingNode extends ElementNode {
 
   createDOM(config: EditorConfig): HTMLElement {
     const tag = this.__tag;
-    const element = document.createElement(tag);
+    const element = $getDocument().createElement(tag);
     const theme = config.theme;
     const classNames = theme.heading;
     if (classNames !== undefined) {
@@ -289,66 +434,12 @@ export class HeadingNode extends ElementNode {
     return prevNode.__tag !== this.__tag;
   }
 
-  static importDOM(): DOMConversionMap | null {
-    return {
-      h1: (node: Node) => ({
-        conversion: $convertHeadingElement,
-        priority: 0,
-      }),
-      h2: (node: Node) => ({
-        conversion: $convertHeadingElement,
-        priority: 0,
-      }),
-      h3: (node: Node) => ({
-        conversion: $convertHeadingElement,
-        priority: 0,
-      }),
-      h4: (node: Node) => ({
-        conversion: $convertHeadingElement,
-        priority: 0,
-      }),
-      h5: (node: Node) => ({
-        conversion: $convertHeadingElement,
-        priority: 0,
-      }),
-      h6: (node: Node) => ({
-        conversion: $convertHeadingElement,
-        priority: 0,
-      }),
-      p: (node: Node) => {
-        // domNode is a <p> since we matched it by nodeName
-        const paragraph = node as HTMLParagraphElement;
-        const firstChild = paragraph.firstChild;
-        if (firstChild !== null && isGoogleDocsTitle(firstChild)) {
-          return {
-            conversion: () => ({node: null}),
-            priority: 3,
-          };
-        }
-        return null;
-      },
-      span: (node: Node) => {
-        if (isGoogleDocsTitle(node)) {
-          return {
-            conversion: (domNode: Node) => {
-              return {
-                node: $createHeadingNode('h1'),
-              };
-            },
-            priority: 3,
-          };
-        }
-        return null;
-      },
-    };
-  }
-
   exportDOM(editor: LexicalEditor): DOMExportOutput {
     const {element} = super.exportDOM(editor);
 
     if (isHTMLElement(element)) {
       if (this.isEmpty()) {
-        element.append(document.createElement('br'));
+        element.append($getDocument().createElement('br'));
       }
 
       const formatType = this.getFormatType();
@@ -367,25 +458,6 @@ export class HeadingNode extends ElementNode {
     };
   }
 
-  static importJSON(serializedNode: SerializedHeadingNode): HeadingNode {
-    return $createHeadingNode(serializedNode.tag).updateFromJSON(
-      serializedNode,
-    );
-  }
-
-  updateFromJSON(
-    serializedNode: LexicalUpdateJSON<SerializedHeadingNode>,
-  ): this {
-    return super.updateFromJSON(serializedNode).setTag(serializedNode.tag);
-  }
-
-  exportJSON(): SerializedHeadingNode {
-    return {
-      ...super.exportJSON(),
-      tag: this.getTag(),
-    };
-  }
-
   // Mutation
   insertNewAfter(
     selection?: RangeSelection,
@@ -401,7 +473,11 @@ export class HeadingNode extends ElementNode {
     const newElement =
       isAtEnd || !selection
         ? $createParagraphNode()
-        : $createHeadingNode(this.getTag());
+        : // The heading is split in two, so the second half keeps the
+          // block format and style of the first, like ParagraphNode does.
+          $createHeadingNode(this.getTag())
+            .setFormat(this.getFormatType())
+            .setStyle(this.getStyle());
     const direction = this.getDirection();
     newElement.setDirection(direction);
     this.insertAfter(newElement, restoreSelection);
@@ -504,6 +580,20 @@ async function onCutForRichText(
   event: CommandPayloadType<typeof CUT_COMMAND>,
   editor: LexicalEditor,
 ): Promise<void> {
+  // Widen a whole-document range to the blocks themselves *before* the copy, so
+  // the clipboard carries exactly what the removal below takes out: Cmd+X then
+  // Cmd+V has to restore the heading, quote or list it took, not just its text
+  // (#5835). A collapsed caret cuts nothing and is left alone. Tagged like the
+  // removal so the two stay one entry in history.
+  editor.update(
+    () => {
+      const selection = $getSelection();
+      if ($isRangeSelection(selection) && !selection.isCollapsed()) {
+        INTERNAL_$expandSelectionToWholeDocument(selection);
+      }
+    },
+    {discrete: true, tag: CUT_TAG},
+  );
   await copyToClipboard(
     editor,
     objectKlassEquals(event, ClipboardEvent) ? event : null,
@@ -536,6 +626,40 @@ function $isTargetWithinDecorator(target: HTMLElement): boolean {
 function $isSelectionAtEndOfRoot(selection: RangeSelection) {
   const focus = selection.focus;
   return focus.key === 'root' && focus.offset === $getRoot().getChildrenSize();
+}
+
+function $isSelectionAtStartOfRoot(selection: RangeSelection) {
+  const focus = selection.focus;
+  return focus.key === 'root' && focus.offset === 0;
+}
+
+/**
+ * True when the selection is a collapsed element point at the very start or
+ * end of the root, beside a child that renders a block cursor (a decorator, a
+ * table or another shadow root). There is nothing past the block cursor to
+ * move to, so horizontal arrow navigation in that direction has to be a no-op.
+ * Left to the browser, the native caret escapes to the other side of the block
+ * instead and the caret appears to cycle around it. See #7999.
+ */
+function $isBlockCursorAtRootEdge(
+  selection: RangeSelection,
+  direction: CaretDirection,
+): boolean {
+  if (!selection.isCollapsed()) {
+    return false;
+  }
+  const isNext = direction === 'next';
+  if (
+    !(isNext
+      ? $isSelectionAtEndOfRoot(selection)
+      : $isSelectionAtStartOfRoot(selection))
+  ) {
+    return false;
+  }
+  const offset = selection.focus.offset;
+  return $needsBlockCursorBeside(
+    $getRoot().getChildAtIndex(isNext ? offset - 1 : offset),
+  );
 }
 
 function $isSelectionCollapsedAtFrontOfIndentedBlock(
@@ -698,6 +822,16 @@ function $tryExitShadowRootToBlockCursor(
   if (!shadowRoot) {
     return false;
   }
+  // When focus is an element-type point, $caretFromPoint returns a caret
+  // whose origin is a child of the focus node. If that child happens to be
+  // (or sit inside) a shadow root, $findMatchingParent matches it even
+  // though the selection is at the parent level, not inside the shadow root.
+  // Skip the exit logic when the focus node is not actually inside the
+  // found shadow root.
+  const focusNode = selection.focus.getNode();
+  if (!shadowRoot.is(focusNode) && !$hasAncestor(focusNode, shadowRoot)) {
+    return false;
+  }
   // Check that the focus is at the edge of the shadow root in the given
   // direction. If focus is the shadow root itself, check the offset directly.
   // Otherwise walk toward the deepest first/last descendant.
@@ -753,6 +887,246 @@ function $tryExitShadowRootToBlockCursor(
   return false;
 }
 
+function $isSelectableBlockDecorator(
+  node: LexicalNode | null | undefined,
+): boolean {
+  return (
+    $isDecoratorNode(node) &&
+    !node.isInline() &&
+    !node.isIsolated() &&
+    node.isKeyboardSelectable()
+  );
+}
+
+function $selectNode(key: NodeKey): void {
+  const nodeSelection = $createNodeSelection();
+  nodeSelection.add(key);
+  $setSelection(nodeSelection);
+}
+
+function $tryDecoratorLineNavigation(
+  selection: RangeSelection,
+  isBackward: boolean,
+): boolean {
+  if (!selection.isCollapsed()) {
+    return false;
+  }
+  const focus = selection.focus;
+  const focusNode = focus.getNode();
+  const direction = isBackward ? 'previous' : 'next';
+  const focusCaret = $caretFromPoint(focus, direction);
+
+  if (
+    focus.type === 'element' &&
+    $isElementNode(focusNode) &&
+    $isRootOrShadowRoot(focusNode)
+  ) {
+    const adjacentChild = focusCaret.getNodeAtCaret();
+    if (adjacentChild !== null && $isSelectableBlockDecorator(adjacentChild)) {
+      $selectNode(adjacentChild.__key);
+      return true;
+    }
+    return false;
+  }
+
+  const topBlock = $findMatchingParent(
+    $isElementNode(focusNode) ? focusNode : focusNode.getParentOrThrow(),
+    (n): n is ElementNode =>
+      $isElementNode(n) && !n.isInline() && $isRootOrShadowRoot(n.getParent()),
+  );
+  if (topBlock === null) {
+    return false;
+  }
+  const adjacentSibling = $getSiblingCaret(
+    topBlock,
+    direction,
+  ).getNodeAtCaret();
+  if (
+    adjacentSibling === null ||
+    !$isSelectableBlockDecorator(adjacentSibling)
+  ) {
+    return false;
+  }
+  // Empty blocks always escape on line-move, so skip the DOM probe.
+  if (topBlock.getTextContentSize() === 0) {
+    $selectNode(adjacentSibling.__key);
+    return true;
+  }
+  const rootElement = $getEditor().getRootElement();
+  if (rootElement === null) {
+    return false;
+  }
+  const domSelection = getDOMSelection(rootElement.ownerDocument.defaultView);
+  if (domSelection === null || domSelection.rangeCount === 0) {
+    return false;
+  }
+  const savedAnchorNode = domSelection.anchorNode;
+  const savedAnchorOffset = domSelection.anchorOffset;
+  const savedFocusNode = domSelection.focusNode;
+  const savedFocusOffset = domSelection.focusOffset;
+  domSelection.modify('move', isBackward ? 'backward' : 'forward', 'line');
+  const newAnchorNode = domSelection.anchorNode;
+  const newAnchorOffset = domSelection.anchorOffset;
+  if (newAnchorNode === null) {
+    restoreDOMSelection(
+      domSelection,
+      savedAnchorNode,
+      savedAnchorOffset,
+      savedFocusNode,
+      savedFocusOffset,
+    );
+    return false;
+  }
+  const movedNode = $getNearestNodeFromDOMNode(newAnchorNode);
+  restoreDOMSelection(
+    domSelection,
+    savedAnchorNode,
+    savedAnchorOffset,
+    savedFocusNode,
+    savedFocusOffset,
+  );
+  if (movedNode === null) {
+    return false;
+  }
+  // Firefox stays in place when modify('move', 'backward', 'line') hits
+  // the top of a block — treat no movement as reaching the block edge.
+  const didNotMove =
+    newAnchorNode === savedAnchorNode && newAnchorOffset === savedAnchorOffset;
+  if (didNotMove) {
+    $selectNode(adjacentSibling.__key);
+    return true;
+  }
+  const stillInSameBlock =
+    movedNode.is(topBlock) || $hasAncestor(movedNode, topBlock);
+  if (stillInSameBlock) {
+    return false;
+  }
+  $selectNode(adjacentSibling.__key);
+  return true;
+}
+
+function restoreDOMSelection(
+  domSelection: Selection,
+  anchorNode: Node | null,
+  anchorOffset: number,
+  focusNode: Node | null,
+  focusOffset: number,
+): void {
+  if (anchorNode !== null && focusNode !== null) {
+    domSelection.setBaseAndExtent(
+      anchorNode,
+      anchorOffset,
+      focusNode,
+      focusOffset,
+    );
+  }
+}
+
+function $tryInlineGridLineNavigation(
+  selection: RangeSelection,
+  isBackward: boolean,
+): boolean {
+  if (!selection.isCollapsed()) {
+    return false;
+  }
+  const focusNode = selection.focus.getNode();
+  const parentBlock = $findMatchingParent(
+    $isElementNode(focusNode) ? focusNode : focusNode.getParentOrThrow(),
+    (n): n is ElementNode => $isElementNode(n) && !n.isInline(),
+  );
+  if (parentBlock === null) {
+    return false;
+  }
+  const editor = $getEditor();
+  const rootElement = editor.getRootElement();
+  if (rootElement === null) {
+    return false;
+  }
+  const win = rootElement.ownerDocument.defaultView;
+  if (win === null) {
+    return false;
+  }
+  let hasGrid = false;
+  for (const child of parentBlock.getChildren()) {
+    if ($isElementNode(child) && child.isInline()) {
+      const dom = editor.getElementByKey(child.getKey());
+      if (dom !== null) {
+        const d = win.getComputedStyle(dom).display;
+        if (d === 'inline-grid' || d === 'inline-flex') {
+          hasGrid = true;
+          break;
+        }
+      }
+    }
+  }
+  if (!hasGrid) {
+    return false;
+  }
+  const direction: CaretDirection = isBackward ? 'previous' : 'next';
+  const siblingBlock = $getSiblingCaret(
+    parentBlock,
+    direction,
+  ).getNodeAtCaret();
+  if (siblingBlock === null || !$isElementNode(siblingBlock)) {
+    if (isBackward) {
+      const first = parentBlock.getFirstDescendant();
+      if ($isTextNode(first)) {
+        first.select(0, 0);
+      } else {
+        parentBlock.select(0, 0);
+      }
+    } else {
+      const last = parentBlock.getLastDescendant();
+      if ($isTextNode(last)) {
+        const len = last.getTextContentSize();
+        last.select(len, len);
+      } else {
+        const count = parentBlock.getChildrenSize();
+        parentBlock.select(count, count);
+      }
+    }
+    return true;
+  }
+  const siblingDOM = editor.getElementByKey(siblingBlock.getKey());
+  if (siblingDOM === null) {
+    return false;
+  }
+  const domSelection = getDOMSelection(win);
+  if (domSelection === null || domSelection.rangeCount === 0) {
+    return false;
+  }
+  const curRange = domSelection.getRangeAt(0).cloneRange();
+  curRange.collapse(true);
+  const curRect = curRange.getBoundingClientRect();
+  const sibRect = siblingDOM.getBoundingClientRect();
+  const targetY = sibRect.top + sibRect.height / 2;
+  if (curRect.height > 0) {
+    const hit = caretFromPoint(curRect.left, targetY, rootElement);
+    if (hit !== null && siblingDOM.contains(hit.node)) {
+      const hitRange = rootElement.ownerDocument.createRange();
+      hitRange.setStart(hit.node, hit.offset);
+      hitRange.collapse(true);
+      selection.applyDOMRange(hitRange);
+      selection.dirty = true;
+      return true;
+    }
+  }
+  const targetDesc = isBackward
+    ? siblingBlock.getLastDescendant()
+    : siblingBlock.getFirstDescendant();
+  if ($isTextNode(targetDesc)) {
+    const offset = isBackward ? targetDesc.getTextContentSize() : 0;
+    targetDesc.select(offset, offset);
+  } else {
+    const childCount = siblingBlock.getChildrenSize();
+    siblingBlock.select(
+      isBackward ? childCount : 0,
+      isBackward ? childCount : 0,
+    );
+  }
+  return true;
+}
+
 function $exitNodeSelectionToward(
   node: LexicalNode,
   direction: CaretDirection,
@@ -771,6 +1145,49 @@ function $exitNodeSelectionToward(
   } else {
     node.selectPrevious();
   }
+}
+
+/**
+ * Convert a contiguous NodeSelection to a RangeSelection that covers the same
+ * siblings. Discontiguous NodeSelections cannot be represented as a range
+ * without selecting the nodes between them, so they retain the existing
+ * collapse behavior in the arrow handlers.
+ */
+function $convertContiguousNodeSelection(
+  selection: NodeSelection,
+  direction: CaretDirection,
+): boolean {
+  const carets = selection
+    .getNodes()
+    .map(node => $getSiblingCaret(node, 'next'))
+    .sort($comparePointCaretNext);
+  // At least one node
+  const firstCaret = carets[0];
+  const lastCaret = carets[carets.length - 1];
+  if (!firstCaret || !lastCaret) {
+    return false;
+  }
+  // Check that all nodes are contiguous
+  for (let i = 0; i < carets.length - 1; i++) {
+    if (!carets[i + 1].origin.is(carets[i].getNodeAtCaret())) {
+      return false;
+    }
+  }
+  $setSelectionFromCaretRange(
+    $getCaretRangeInDirection(
+      $getCaretRange($rewindSiblingCaret(firstCaret), lastCaret),
+      direction,
+    ),
+  );
+  // The arrow handlers fall through to the RangeSelection paths after this,
+  // and the vertical ones leave the extension to the browser's default action
+  // for this keydown. That action reads the DOM selection, but this update
+  // would otherwise be committed in a microtask, and Firefox does not pick up
+  // a selection that lands after the keydown listeners return — it would
+  // extend nothing on the first press. Commit synchronously so every browser
+  // extends the converted selection.
+  $flushSyncAfterUpdate();
+  return true;
 }
 
 /**
@@ -833,18 +1250,62 @@ function $promoteNodeSelectionToBlockEdge(
   return true;
 }
 
+/**
+ * Decides whether a paste event carrying files should be handled by
+ * dispatching {@link DRAG_DROP_PASTE} with those files, rather than falling
+ * through to the regular HTML paste handling.
+ *
+ * @param files - The files present on the clipboard, if any
+ * @param hasTextContent - Whether the clipboard also carries text/html or
+ * text/plain content
+ */
+export type ShouldHandlePasteAsFiles = (
+  files: File[],
+  hasTextContent: boolean,
+) => boolean;
+
+/**
+ * The historical behavior: files are only handled when the clipboard carries
+ * no text content at all. Note that browsers put a text/html fallback on the
+ * clipboard alongside the file when an image is copied via the context menu,
+ * so this default routes such images through the HTML importer.
+ */
+export function defaultShouldHandlePasteAsFiles(
+  files: File[],
+  hasTextContent: boolean,
+): boolean {
+  return files.length > 0 && !hasTextContent;
+}
+
 export function registerRichText(
   editor: LexicalEditor,
   escapeFormatTriggers: ReadonlySignal<EscapeFormatTriggerConfig> = signal(
     DEFAULT_ESCAPE_FORMAT_TRIGGERS,
   ),
+  shouldHandlePasteAsFiles: ReadonlySignal<ShouldHandlePasteAsFiles> = signal(
+    defaultShouldHandlePasteAsFiles,
+  ),
 ): () => void {
   const removeListener = mergeRegister(
     editor.registerCommand(
       CLICK_COMMAND,
-      () => {
+      event => {
         const selection = $getSelection();
         if ($isNodeSelection(selection)) {
+          // A click on an already-selected node is an interaction with that
+          // node (its own click handler may select it, open an editor, …),
+          // not a deselect gesture. Keep the selection when the click target
+          // is inside the selected node's DOM; clicking anywhere else still
+          // deselects (facebook/lexical#8907).
+          const eventTarget = event.target;
+          if (isHTMLElement(eventTarget)) {
+            for (const node of selection.getNodes()) {
+              const dom = editor.getElementByKey(node.getKey());
+              if (dom !== null && dom.contains(eventTarget)) {
+                return false;
+              }
+            }
+          }
           selection.clear();
           return true;
         }
@@ -860,7 +1321,7 @@ export function registerRichText(
       },
       COMMAND_PRIORITY_EDITOR,
     ),
-    editor.registerCommand<boolean>(
+    editor.registerCommand(
       DELETE_CHARACTER_COMMAND,
       isBackward => {
         const selection = $getSelection();
@@ -875,7 +1336,7 @@ export function registerRichText(
       },
       COMMAND_PRIORITY_EDITOR,
     ),
-    editor.registerCommand<boolean>(
+    editor.registerCommand(
       DELETE_WORD_COMMAND,
       isBackward => {
         const selection = $getSelection();
@@ -887,7 +1348,7 @@ export function registerRichText(
       },
       COMMAND_PRIORITY_EDITOR,
     ),
-    editor.registerCommand<boolean>(
+    editor.registerCommand(
       DELETE_LINE_COMMAND,
       isBackward => {
         const selection = $getSelection();
@@ -940,7 +1401,7 @@ export function registerRichText(
       },
       COMMAND_PRIORITY_EDITOR,
     ),
-    editor.registerCommand<TextFormatType>(
+    editor.registerCommand(
       FORMAT_TEXT_COMMAND,
       format => {
         const selection = $getSelection();
@@ -952,7 +1413,19 @@ export function registerRichText(
       },
       COMMAND_PRIORITY_EDITOR,
     ),
-    editor.registerCommand<ElementFormatType>(
+    editor.registerCommand(
+      SET_TEXT_FORMAT_COMMAND,
+      formats => {
+        const selection = $getSelection();
+        if (!$isRangeSelection(selection) && !$isNodeSelection(selection)) {
+          return false;
+        }
+        $setTextFormat(selection, formats);
+        return true;
+      },
+      COMMAND_PRIORITY_EDITOR,
+    ),
+    editor.registerCommand(
       FORMAT_ELEMENT_COMMAND,
       format => {
         const selection = $getSelection();
@@ -974,7 +1447,7 @@ export function registerRichText(
       },
       COMMAND_PRIORITY_EDITOR,
     ),
-    editor.registerCommand<boolean>(
+    editor.registerCommand(
       INSERT_LINE_BREAK_COMMAND,
       selectStart => {
         const selection = $getSelection();
@@ -1034,20 +1507,33 @@ export function registerRichText(
       },
       COMMAND_PRIORITY_EDITOR,
     ),
-    editor.registerCommand<KeyboardEvent>(
+    editor.registerCommand(
       KEY_ARROW_UP_COMMAND,
       event => {
-        const selection = $getSelection();
+        let selection = $getSelection();
         if ($isNodeSelection(selection)) {
           // If selection is on a node, let's try and move selection
           // back to being a range selection.
           const nodes = selection.getNodes();
           if (nodes.length > 0) {
+            if (
+              event.shiftKey &&
+              $convertContiguousNodeSelection(selection, 'previous')
+            ) {
+              // Fallthrough
+              selection = $getSelection();
+            } else {
+              event.preventDefault();
+              $exitNodeSelectionToward(nodes[0], 'previous');
+              return true;
+            }
+          }
+        }
+        if ($isRangeSelection(selection)) {
+          if ($isSelectionAtStartOfRoot(selection)) {
             event.preventDefault();
-            $exitNodeSelectionToward(nodes[0], 'previous');
             return true;
           }
-        } else if ($isRangeSelection(selection)) {
           if (
             !event.shiftKey &&
             $tryBlockCursorShadowRootNavigation(selection, 'previous')
@@ -1055,14 +1541,14 @@ export function registerRichText(
             event.preventDefault();
             return true;
           }
-          const possibleNode = $getAdjacentNode(selection.focus, true);
+          if (!event.shiftKey && $tryDecoratorLineNavigation(selection, true)) {
+            event.preventDefault();
+            return true;
+          }
           if (
             !event.shiftKey &&
-            $isDecoratorNode(possibleNode) &&
-            !possibleNode.isIsolated() &&
-            !possibleNode.isInline()
+            $tryInlineGridLineNavigation(selection, true)
           ) {
-            possibleNode.selectPrevious();
             event.preventDefault();
             return true;
           }
@@ -1071,20 +1557,29 @@ export function registerRichText(
       },
       COMMAND_PRIORITY_EDITOR,
     ),
-    editor.registerCommand<KeyboardEvent>(
+    editor.registerCommand(
       KEY_ARROW_DOWN_COMMAND,
       event => {
-        const selection = $getSelection();
+        let selection = $getSelection();
         if ($isNodeSelection(selection)) {
           // If selection is on a node, let's try and move selection
           // back to being a range selection.
           const nodes = selection.getNodes();
           if (nodes.length > 0) {
-            event.preventDefault();
-            $exitNodeSelectionToward(nodes[0], 'next');
-            return true;
+            if (
+              event.shiftKey &&
+              $convertContiguousNodeSelection(selection, 'next')
+            ) {
+              // Fallthrough
+              selection = $getSelection();
+            } else {
+              event.preventDefault();
+              $exitNodeSelectionToward(nodes[0], 'next');
+              return true;
+            }
           }
-        } else if ($isRangeSelection(selection)) {
+        }
+        if ($isRangeSelection(selection)) {
           if ($isSelectionAtEndOfRoot(selection)) {
             event.preventDefault();
             return true;
@@ -1096,14 +1591,17 @@ export function registerRichText(
             event.preventDefault();
             return true;
           }
-          const possibleNode = $getAdjacentNode(selection.focus, false);
           if (
             !event.shiftKey &&
-            $isDecoratorNode(possibleNode) &&
-            !possibleNode.isIsolated() &&
-            !possibleNode.isInline()
+            $tryDecoratorLineNavigation(selection, false)
           ) {
-            possibleNode.selectNext();
+            event.preventDefault();
+            return true;
+          }
+          if (
+            !event.shiftKey &&
+            $tryInlineGridLineNavigation(selection, false)
+          ) {
             event.preventDefault();
             return true;
           }
@@ -1112,32 +1610,42 @@ export function registerRichText(
       },
       COMMAND_PRIORITY_EDITOR,
     ),
-    editor.registerCommand<KeyboardEvent>(
+    editor.registerCommand(
       KEY_ARROW_LEFT_COMMAND,
       event => {
-        const selection = $getSelection();
+        let selection = $getSelection();
         if ($isNodeSelection(selection)) {
           // If selection is on a node, let's try and move selection
           // back to being a range selection.
           const nodes = selection.getNodes();
           if (nodes.length > 0) {
-            event.preventDefault();
-            $exitNodeSelectionToward(
-              nodes[0],
-              $isParentRTL(nodes[0]) ? 'next' : 'previous',
-            );
-            return true;
+            const direction = $isParentRTL(nodes[0]) ? 'next' : 'previous';
+            if (
+              event.shiftKey &&
+              $convertContiguousNodeSelection(selection, direction)
+            ) {
+              // Fallthrough
+              selection = $getSelection();
+            } else {
+              event.preventDefault();
+              $exitNodeSelectionToward(nodes[0], direction);
+              return true;
+            }
           }
         }
         if (!$isRangeSelection(selection)) {
           return false;
         }
+        const leftDirection = $isParentRTL(selection.anchor.getNode())
+          ? 'next'
+          : 'previous';
+        if ($isBlockCursorAtRootEdge(selection, leftDirection)) {
+          event.preventDefault();
+          return true;
+        }
         if (
           !event.shiftKey &&
-          $tryBlockCursorShadowRootNavigation(
-            selection,
-            $isParentRTL(selection.anchor.getNode()) ? 'next' : 'previous',
-          )
+          $tryBlockCursorShadowRootNavigation(selection, leftDirection)
         ) {
           event.preventDefault();
           return true;
@@ -1160,32 +1668,42 @@ export function registerRichText(
       },
       COMMAND_PRIORITY_EDITOR,
     ),
-    editor.registerCommand<KeyboardEvent>(
+    editor.registerCommand(
       KEY_ARROW_RIGHT_COMMAND,
       event => {
-        const selection = $getSelection();
+        let selection = $getSelection();
         if ($isNodeSelection(selection)) {
           // If selection is on a node, let's try and move selection
           // back to being a range selection.
           const nodes = selection.getNodes();
           if (nodes.length > 0) {
-            event.preventDefault();
-            $exitNodeSelectionToward(
-              nodes[0],
-              $isParentRTL(nodes[0]) ? 'previous' : 'next',
-            );
-            return true;
+            const direction = $isParentRTL(nodes[0]) ? 'previous' : 'next';
+            if (
+              event.shiftKey &&
+              $convertContiguousNodeSelection(selection, direction)
+            ) {
+              // Fallthrough
+              selection = $getSelection();
+            } else {
+              event.preventDefault();
+              $exitNodeSelectionToward(nodes[0], direction);
+              return true;
+            }
           }
         }
         if (!$isRangeSelection(selection)) {
           return false;
         }
+        const rightDirection = $isParentRTL(selection.anchor.getNode())
+          ? 'previous'
+          : 'next';
+        if ($isBlockCursorAtRootEdge(selection, rightDirection)) {
+          event.preventDefault();
+          return true;
+        }
         if (
           !event.shiftKey &&
-          $tryBlockCursorShadowRootNavigation(
-            selection,
-            $isParentRTL(selection.anchor.getNode()) ? 'previous' : 'next',
-          )
+          $tryBlockCursorShadowRootNavigation(selection, rightDirection)
         ) {
           event.preventDefault();
           return true;
@@ -1208,7 +1726,7 @@ export function registerRichText(
       },
       COMMAND_PRIORITY_EDITOR,
     ),
-    editor.registerCommand<KeyboardEvent>(
+    editor.registerCommand(
       KEY_BACKSPACE_COMMAND,
       event => {
         const selection = $getSelection();
@@ -1226,7 +1744,7 @@ export function registerRichText(
         if ($isRangeSelection(selection)) {
           if ($isSelectionCollapsedAtFrontOfIndentedBlock(selection)) {
             event.preventDefault();
-            return editor.dispatchCommand(OUTDENT_CONTENT_COMMAND, undefined);
+            return editor.dispatchCommand(OUTDENT_CONTENT_COMMAND);
           }
           // On iOS, blocking the keydown event's default prevents the system
           // keyboard from updating its autocomplete/autocorrect suggestion bar
@@ -1246,7 +1764,7 @@ export function registerRichText(
       },
       COMMAND_PRIORITY_EDITOR,
     ),
-    editor.registerCommand<KeyboardEvent>(
+    editor.registerCommand(
       KEY_DELETE_COMMAND,
       event => {
         const selection = $getSelection();
@@ -1266,7 +1784,7 @@ export function registerRichText(
       },
       COMMAND_PRIORITY_EDITOR,
     ),
-    editor.registerCommand<KeyboardEvent | null>(
+    editor.registerCommand(
       KEY_ENTER_COMMAND,
       event => {
         let selection = $getSelection();
@@ -1317,7 +1835,7 @@ export function registerRichText(
             return editor.dispatchCommand(INSERT_LINE_BREAK_COMMAND, false);
           }
         }
-        return editor.dispatchCommand(INSERT_PARAGRAPH_COMMAND, undefined);
+        return editor.dispatchCommand(INSERT_PARAGRAPH_COMMAND);
       },
       COMMAND_PRIORITY_EDITOR,
     ),
@@ -1333,7 +1851,7 @@ export function registerRichText(
       },
       COMMAND_PRIORITY_EDITOR,
     ),
-    editor.registerCommand<DragEvent>(
+    editor.registerCommand(
       DROP_COMMAND,
       event => {
         const [, files] = eventFiles(event);
@@ -1359,8 +1877,13 @@ export function registerRichText(
                 $normalizeSelection__EXPERIMENTAL(selection);
               $setSelection(normalizedSelection);
             }
-            editor.dispatchCommand(DRAG_DROP_PASTE, files);
           }
+          // The drop point does not always resolve to a caret (the browser
+          // returns nothing for e.g. the editor's padding). We still consume
+          // the event below, so the files have to be forwarded regardless,
+          // otherwise the drop is silently discarded. PASTE_COMMAND already
+          // dispatches DRAG_DROP_PASTE unconditionally.
+          editor.dispatchCommand(DRAG_DROP_PASTE, files);
           event.preventDefault();
           return true;
         }
@@ -1369,7 +1892,7 @@ export function registerRichText(
       },
       COMMAND_PRIORITY_EDITOR,
     ),
-    editor.registerCommand<DragEvent>(
+    editor.registerCommand(
       DRAGSTART_COMMAND,
       event => {
         const [isFileTransfer] = eventFiles(event);
@@ -1397,7 +1920,7 @@ export function registerRichText(
       },
       COMMAND_PRIORITY_EDITOR,
     ),
-    editor.registerCommand<DragEvent>(
+    editor.registerCommand(
       DRAGOVER_COMMAND,
       event => {
         const [isFileTransfer] = eventFiles(event);
@@ -1405,9 +1928,22 @@ export function registerRichText(
         if (isFileTransfer && !$isRangeSelection(selection)) {
           return false;
         }
-        // contenteditable is not a native drop target; preventDefault() is
-        // required on dragover to allow the drop event to fire in Firefox.
-        event.preventDefault();
+        // Do NOT call event.preventDefault() here for text drags. Canceling
+        // dragover tells the browser the page will handle the drop itself,
+        // which suppresses the native editable drop behavior (drop caret
+        // tracking and the beforeinput insertFromDrop that $doDrop relies on
+        // for drags that don't originate in a Lexical editor). The only
+        // exception is a decorator node, which the browser can't show a drop
+        // caret for anyway and whose drops are fully handled by DROP_COMMAND.
+        const x = event.clientX;
+        const y = event.clientY;
+        const eventRange = caretFromPoint(x, y, editor.getRootElement());
+        if (eventRange !== null) {
+          const node = $getNearestNodeFromDOMNode(eventRange.node);
+          if ($isDecoratorNode(node)) {
+            event.preventDefault();
+          }
+        }
         return true;
       },
       COMMAND_PRIORITY_EDITOR,
@@ -1455,8 +1991,10 @@ export function registerRichText(
       PASTE_COMMAND,
       event => {
         const [, files, hasTextContent] = eventFiles(event);
-        if (files.length > 0 && !hasTextContent) {
-          editor.dispatchCommand(DRAG_DROP_PASTE, files);
+        if (
+          shouldHandlePasteAsFiles.peek()(files, hasTextContent) &&
+          editor.dispatchCommand(DRAG_DROP_PASTE, files)
+        ) {
           return true;
         }
 
@@ -1514,7 +2052,7 @@ export function registerRichText(
       },
       COMMAND_PRIORITY_EDITOR,
     ),
-    editor.registerCommand<KeyboardEvent>(
+    editor.registerCommand(
       MOVE_TO_END,
       event => {
         const selection = $getSelection();
@@ -1555,7 +2093,7 @@ export function registerRichText(
       },
       COMMAND_PRIORITY_EDITOR,
     ),
-    editor.registerCommand<KeyboardEvent>(
+    editor.registerCommand(
       MOVE_TO_START,
       event => {
         const selection = $getSelection();
@@ -1615,8 +2153,15 @@ export function registerRichText(
 }
 
 export {
+  HeadingAnnounceExtension,
+  type HeadingAnnounceExtensionConfig,
+} from './HeadingAnnounceExtension';
+export {
   type RichTextConfig,
   RichTextExtension,
   RichTextImportExtension,
 } from './LexicalRichTextExtension';
-export {RichTextImportRules} from './RichTextImportExtension';
+export {
+  RichTextImportRules,
+  ShadowRootQuoteRule,
+} from './RichTextImportExtension';

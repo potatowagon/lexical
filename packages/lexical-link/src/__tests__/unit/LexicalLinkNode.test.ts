@@ -14,8 +14,8 @@ import {
   $toggleLink,
   formatUrl,
   LinkExtension,
-  LinkNode,
-  SerializedLinkNode,
+  type LinkNode,
+  type SerializedLinkNode,
 } from '@lexical/link';
 import {$createMarkNode, $isMarkNode} from '@lexical/mark';
 import {
@@ -24,7 +24,9 @@ import {
   RichTextExtension,
 } from '@lexical/rich-text';
 import {
+  $cloneWithProperties,
   $createLineBreakNode,
+  $createNodeSelection,
   $createParagraphNode,
   $createRangeSelection,
   $createTextNode,
@@ -37,10 +39,10 @@ import {
   $isTextNode,
   $selectAll,
   $setSelection,
-  ParagraphNode,
-  RangeSelection,
-  SerializedParagraphNode,
-  TextNode,
+  type ParagraphNode,
+  type RangeSelection,
+  type SerializedParagraphNode,
+  type TextNode,
 } from 'lexical';
 import {$assertNodeType, initializeUnitTest} from 'lexical/src/__tests__/utils';
 import {assert, describe, expect, it, test} from 'vitest';
@@ -63,6 +65,32 @@ const editorConfig = Object.freeze({
 
 describe('LexicalLinkNode tests', () => {
   initializeUnitTest(testEnv => {
+    test('LinkNode.updateFromJSON restores null for empty or absent attributes', async () => {
+      const {editor} = testEnv;
+
+      await editor.update(() => {
+        const link = $createLinkNode('https://example.com/', {
+          rel: 'noopener',
+          target: '_blank',
+          title: 'example',
+        });
+        // The legacy parser applied `value || null`: an empty string imports
+        // as null, and an absent property resets to null.
+        link.updateFromJSON({
+          rel: '',
+          target: '',
+          title: '',
+          url: 'https://example.com/',
+        });
+        expect(link.getRel()).toBe(null);
+        expect(link.getTarget()).toBe(null);
+        expect(link.getTitle()).toBe(null);
+        link.setRel('noopener');
+        link.updateFromJSON({url: 'https://example.com/'});
+        expect(link.getRel()).toBe(null);
+      });
+    });
+
     test('LinkNode.constructor', async () => {
       const {editor} = testEnv;
 
@@ -82,7 +110,7 @@ describe('LexicalLinkNode tests', () => {
       await editor.update(() => {
         const linkNode = $createLinkNode('/');
 
-        const linkNodeClone = LinkNode.clone(linkNode);
+        const linkNodeClone = $cloneWithProperties(linkNode);
 
         expect(linkNodeClone).not.toBe(linkNode);
         expect(linkNodeClone).toStrictEqual(linkNode);
@@ -252,6 +280,48 @@ describe('LexicalLinkNode tests', () => {
         );
       });
     });
+
+    test('LinkNode.createDOM() fails closed on unparseable URLs', async () => {
+      const {editor} = testEnv;
+
+      await editor.update(() => {
+        // A `javascript:` URL crafted so that `new URL()` throws (invalid
+        // port). Previously `sanitizeUrl()` failed open and returned the
+        // attacker-controlled value unchanged; some browsers will still
+        // navigate it, allowing XSS. It must now be neutralized to
+        // about:blank.
+        const linkNode = $createLinkNode(
+          // eslint-disable-next-line no-script-url
+          'javascript://:99999999999/%0aalert(document.domain)',
+        );
+        expect(linkNode.createDOM(editorConfig).outerHTML).toBe(
+          '<a href="about:blank" class="my-link-class"></a>',
+        );
+      });
+    });
+
+    test.each([
+      // Control-character- and whitespace-obfuscated `javascript:` URLs that
+      // throw in `new URL()` but are still navigated by some browsers. The
+      // scheme must be recognized after normalization and neutralized.
+      'java\u0000script:alert(document.domain)',
+      'java\tscript:alert(document.domain)',
+      '\u0001javascript:alert(document.domain)',
+      'java\nscript:alert(document.domain)',
+      'data:text/html,<script>alert(1)</script>',
+    ])(
+      'LinkNode.createDOM() neutralizes obfuscated dangerous scheme %j',
+      async input => {
+        const {editor} = testEnv;
+
+        await editor.update(() => {
+          const linkNode = $createLinkNode(input);
+          expect(linkNode.createDOM(editorConfig).outerHTML).toBe(
+            '<a href="about:blank" class="my-link-class"></a>',
+          );
+        });
+      },
+    );
 
     describe('LinkNode.createDOM() formats URLs', () => {
       [
@@ -1595,6 +1665,102 @@ describe('LinkNode.extractWithChild (Issue #5046 — preserve link wrap across b
         },
         {discrete: true},
       );
+    });
+  });
+});
+
+describe('$toggleLink with a NodeSelection', () => {
+  const extension = defineExtension({
+    $initialEditorState: () => {
+      $getRoot()
+        .clear()
+        .append($createParagraphNode().append($createTextNode('hello')));
+    },
+    dependencies: [LinkExtension, RichTextExtension],
+    name: '[root-node-selection]',
+  });
+
+  function $selectTheTextNode(): void {
+    const textNode = $getRoot().getLastDescendant();
+    assert($isTextNode(textNode), 'Expected a TextNode');
+    const selection = $createNodeSelection();
+    selection.add(textNode.getKey());
+    $setSelection(selection);
+  }
+
+  function $getLink(): LinkNode {
+    const paragraph = $getRoot().getFirstChild();
+    assert($isParagraphNode(paragraph), 'Expected a ParagraphNode');
+    const link = paragraph.getFirstChild();
+    assert($isLinkNode(link), 'Expected a LinkNode');
+    return link;
+  }
+
+  it('applies the title when creating a link', () => {
+    using editor = buildEditorFromExtensions(extension);
+    editor.update(
+      () => {
+        $selectTheTextNode();
+        $toggleLink('https://lexical.dev/', {
+          rel: 'noopener',
+          target: '_blank',
+          title: 'Lexical',
+        });
+      },
+      {discrete: true},
+    );
+    editor.read(() => {
+      const link = $getLink();
+      expect(link.getURL()).toBe('https://lexical.dev/');
+      expect(link.getRel()).toBe('noopener');
+      expect(link.getTarget()).toBe('_blank');
+      expect(link.getTitle()).toBe('Lexical');
+    });
+  });
+
+  it('applies the title when updating an existing link', () => {
+    using editor = buildEditorFromExtensions(extension);
+    editor.update(
+      () => {
+        $selectTheTextNode();
+        $toggleLink('https://lexical.dev/', {title: 'First'});
+      },
+      {discrete: true},
+    );
+    editor.update(
+      () => {
+        $selectTheTextNode();
+        $toggleLink('https://lexical.dev/docs', {title: 'Second'});
+      },
+      {discrete: true},
+    );
+    editor.read(() => {
+      const link = $getLink();
+      expect(link.getURL()).toBe('https://lexical.dev/docs');
+      expect(link.getTitle()).toBe('Second');
+    });
+  });
+
+  it('leaves an existing title alone when none is supplied', () => {
+    using editor = buildEditorFromExtensions(extension);
+    editor.update(
+      () => {
+        $selectTheTextNode();
+        $toggleLink('https://lexical.dev/', {title: 'Kept'});
+      },
+      {discrete: true},
+    );
+    editor.update(
+      () => {
+        $selectTheTextNode();
+        $toggleLink('https://lexical.dev/docs');
+      },
+      {discrete: true},
+    );
+    editor.read(() => {
+      const link = $getLink();
+      expect(link.getURL()).toBe('https://lexical.dev/docs');
+      expect(link.getTitle()).toBe('Kept');
     });
   });
 });

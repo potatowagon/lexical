@@ -6,7 +6,6 @@
  *
  */
 
-import type {LexicalNode, TextNode} from '.';
 import type {LexicalEditor} from './LexicalEditor';
 import type {EditorState} from './LexicalEditorState';
 import type {LexicalPrivateDOM} from './LexicalNode';
@@ -18,8 +17,11 @@ import {
   $isRangeSelection,
   $isTextNode,
   $setSelection,
+  type LexicalNode,
+  type TextNode,
 } from '.';
 import {IS_FIREFOX} from './environment';
+import {isDecoratorBoundaryAnchorDOM} from './LexicalDOMSlot';
 import {updateEditorSync} from './LexicalUpdates';
 import {
   $getNodeByKey,
@@ -55,7 +57,10 @@ function initTextEntryListener(editor: LexicalEditor): void {
   }
 }
 
-function isManagedLineBreak(
+// True when `dom` is a line break the editor is actively managing in the
+// live DOM — identified by the `__lexicalLineBreak` slot reference or by
+// having a node key.
+function isEditorManagedLineBreak(
   dom: Node,
   target: Node & LexicalPrivateDOM,
   editor: LexicalEditor,
@@ -202,7 +207,12 @@ function flushMutations(
               parentDOM != null &&
               addedDOM !== blockCursorElement &&
               node === null &&
-              !isManagedLineBreak(addedDOM, parentDOM, editor) &&
+              !isEditorManagedLineBreak(addedDOM, parentDOM, editor) &&
+              // The zero-size selection anchors the reconciler parks outside
+              // a leading / trailing block decorator (#8922) are keyless
+              // scaffolding, like the managed line break — don't evict them
+              // as foreign DOM.
+              !isDecoratorBoundaryAnchorDOM(addedDOM) &&
               // @experimental named-slots. Slot containers are keyless
               // reconciler scaffolding: a flush that observes one being
               // parked in its host or relocated by an explicit mount must
@@ -243,10 +253,15 @@ function flushMutations(
               const removedDOM = removedDOMs[s];
 
               if (
-                isManagedLineBreak(removedDOM, targetDOM, editor) ||
+                isEditorManagedLineBreak(removedDOM, targetDOM, editor) ||
                 blockCursorElement === removedDOM
               ) {
                 targetDOM.appendChild(removedDOM);
+                unremovedBRs++;
+              } else if (isDecoratorBoundaryAnchorDOM(removedDOM)) {
+                // Position matters for these (leading vs trailing), so don't
+                // blindly re-append — the next reconcile of this element puts
+                // a fresh anchor on the right edge.
                 unremovedBRs++;
               }
             }
@@ -289,7 +304,7 @@ function flushMutations(
             if (
               parentDOM != null &&
               addedDOM.nodeName === 'BR' &&
-              !isManagedLineBreak(addedDOM, target, editor)
+              !isEditorManagedLineBreak(addedDOM, target, editor)
             ) {
               parentDOM.removeChild(addedDOM);
             }

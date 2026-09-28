@@ -6,20 +6,20 @@
  *
  */
 
-import type {JSX} from 'react';
-
 import './index.css';
 
 import {useMergeRefs} from '@floating-ui/react';
 import {$isCodeNode} from '@lexical/code';
 import {$isLinkNode, TOGGLE_LINK_COMMAND} from '@lexical/link';
 import {useLexicalComposerContext} from '@lexical/react/LexicalComposerContext';
+import {useLexicalEditable} from '@lexical/react/useLexicalEditable';
 import {useLexicalRovingTabIndexRef} from '@lexical/react/useLexicalRovingTabIndexRef';
 import {
   $getSelection,
   $isParagraphNode,
   $isRangeSelection,
   $isTextNode,
+  $onUpdate,
   COMMAND_PRIORITY_LOW,
   FORMAT_TEXT_COMMAND,
   getDOMSelection,
@@ -27,14 +27,21 @@ import {
   getParentElement,
   isDOMDocumentNode,
   isDOMShadowRoot,
-  LexicalEditor,
+  type LexicalEditor,
   mergeRegister,
   registerEventListener,
   registerEventListeners,
   SELECTION_CHANGE_COMMAND,
 } from 'lexical';
 import * as React from 'react';
-import {Dispatch, useCallback, useEffect, useRef, useState} from 'react';
+import {
+  type Dispatch,
+  type JSX,
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+} from 'react';
 import {createPortal} from 'react-dom';
 
 import {getDOMRangeRect} from '../../utils/getDOMRangeRect';
@@ -77,6 +84,7 @@ function TextFormatFloatingToolbar({
 }): JSX.Element {
   const popupCharStylesEditorRef = useRef<HTMLDivElement | null>(null);
   const rovingRef = useLexicalRovingTabIndexRef();
+  const isEditable = useLexicalEditable();
   const mergedRef = useMergeRefs([popupCharStylesEditorRef, rovingRef, ref]);
 
   const insertLink = useCallback(() => {
@@ -90,7 +98,7 @@ function TextFormatFloatingToolbar({
   }, [editor, isLink, setIsLinkEditMode]);
 
   const insertComment = () => {
-    editor.dispatchCommand(INSERT_INLINE_COMMAND, undefined);
+    editor.dispatchCommand(INSERT_INLINE_COMMAND);
   };
 
   function mouseMoveListener(e: MouseEvent) {
@@ -205,7 +213,9 @@ function TextFormatFloatingToolbar({
       editor.registerCommand(
         SELECTION_CHANGE_COMMAND,
         () => {
-          $updateTextFormatFloatingToolbar();
+          $onUpdate(() =>
+            editor.read('latest', $updateTextFormatFloatingToolbar),
+          );
           return false;
         },
         COMMAND_PRIORITY_LOW,
@@ -219,7 +229,7 @@ function TextFormatFloatingToolbar({
       className="floating-text-format-popup"
       role="toolbar"
       aria-label="Floating text format toolbar">
-      {editor.isEditable() && (
+      {isEditable && (
         <>
           <button
             type="button"
@@ -347,6 +357,7 @@ function useFloatingTextFormatToolbar(
   editor: LexicalEditor,
   anchorElem: HTMLElement,
   setIsLinkEditMode: Dispatch<boolean>,
+  isRubyEditMode: boolean,
 ): JSX.Element | null {
   const [isText, setIsText] = useState(false);
   const [isLink, setIsLink] = useState(false);
@@ -466,7 +477,7 @@ function useFloatingTextFormatToolbar(
     );
   }, [editor, updatePopup]);
 
-  if (!isText || isLink) {
+  if (!isText || isLink || isRubyEditMode) {
     return null;
   }
 
@@ -495,10 +506,17 @@ function useFloatingTextFormatToolbar(
 export default function FloatingTextFormatToolbarPlugin({
   anchorElem = document.body,
   setIsLinkEditMode,
+  isRubyEditMode = false,
 }: {
   anchorElem?: HTMLElement;
   setIsLinkEditMode: Dispatch<boolean>;
+  isRubyEditMode?: boolean;
 }): JSX.Element | null {
   const [editor] = useLexicalComposerContext();
-  return useFloatingTextFormatToolbar(editor, anchorElem, setIsLinkEditMode);
+  return useFloatingTextFormatToolbar(
+    editor,
+    anchorElem,
+    setIsLinkEditMode,
+    isRubyEditMode,
+  );
 }

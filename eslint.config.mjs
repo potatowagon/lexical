@@ -67,12 +67,20 @@ export default [
       '**/build/',
       'packages/**/npm/',
       '**/__tests__/integration/fixtures/',
+      'packages/lexical-website/static/dev-examples/',
+      '**/dist-size/',
       '**/*.js.flow',
       '**/*.d.ts',
       '**/playwright*/',
       '**/node_modules/',
       '.ts-temp/',
       '**/.docusaurus/',
+      // Build output that only the package's own .gitignore names, which
+      // ESLint does not read: next build writes .next/, wxt writes .output/.
+      // Linting a bundle is meaningless and the rules that walk its AST can
+      // fail outright on generated code.
+      '**/.next/',
+      '**/.output/',
       'playwright-report/',
       'test-results/',
       'examples/*svelte*/',
@@ -80,6 +88,7 @@ export default [
       '**/.wxt/',
       '**/*.www.cjs',
       '**/typedoc-sidebar.cjs',
+      '**/.next/',
     ],
   },
 
@@ -290,6 +299,18 @@ export default [
     },
   },
 
+  // Override: the www stubs at each package root (`packages/*/Lexical*.js`,
+  // written by scripts/create-www-stubs.mjs) are CommonJS and stay that
+  // way: www does not read package.json, so the packages' `"type":
+  // "module"` does not apply to them, and neither should the ESM default
+  // for `.js` here.
+  {
+    files: ['packages/*/*.js'],
+    languageOptions: {
+      sourceType: 'commonjs',
+    },
+  },
+
   // Override: Package source files (module sourceType)
   {
     files: [
@@ -351,11 +372,20 @@ export default [
             'createBinding',
           ],
           isLexicalProvider: ['updateEditor', 'updateEditorSync'],
-          isSafeDollarFunction: '$createRootNode',
+          isSafeDollarFunction: ['$createRootNode', '$createCollabElementNode'],
         }),
       ],
       '@typescript-eslint/array-type': [ERROR, {default: 'array'}],
       '@typescript-eslint/ban-ts-comment': OFF,
+      // The build compiles with @babel/preset-typescript, which only elides an
+      // import when it is explicitly type-only. Enforce `import type` so that
+      // type-only imports never emit a runtime dependency. `separate-type-imports`
+      // keeps pure type imports as `import type {X}` (fully elided); mixed
+      // imports keep the value import and inline `type` on the type specifiers.
+      '@typescript-eslint/consistent-type-imports': [
+        ERROR,
+        {disallowTypeAnnotations: false, fixStyle: 'separate-type-imports'},
+      ],
       '@typescript-eslint/no-this-alias': OFF,
       '@typescript-eslint/no-unused-vars': [
         ERROR,
@@ -404,16 +434,71 @@ export default [
     },
   },
 
-  // Override: Package sources - require /* @__PURE__ */ annotations on
-  // module-scope calls to the side-effect-free lexical factories
-  // (defineExtension, createCommand, defineImportRule, ...) so bundlers
-  // can tree-shake unused definitions. The pre-commit `eslint --fix`
-  // inserts them automatically. Not applied to tests (never bundled).
+  // Override: Library sources — ban direct `document.X` and `window.X` member
+  // access so editors inside Shadow DOM or cross-frame iframes use the correct
+  // realm. Uses `no-restricted-syntax` with MemberExpression selectors so that
+  // `typeof window/document` (SSR guards) and helper definitions in
+  // LexicalUtils.ts that use parameters (not globals) are exempt automatically.
+  // See AGENTS.md "Shadow DOM and iframe realm safety" for the full pattern table.
   {
     files: ['packages/**/src/**'],
-    ignores: ['packages/**/src/__tests__/**'],
+    ignores: [
+      'packages/**/__tests__/**',
+      'packages/**/__bench__/**',
+      'packages/lexical-playground/**',
+      'packages/lexical-devtools/**',
+      'packages/lexical-website/**',
+    ],
     rules: {
-      '@lexical/internal/require-pure-annotation': ERROR,
+      '@lexical/no-document-in-dom-methods': ERROR,
+      'no-restricted-syntax': [
+        ERROR,
+        'WithStatement',
+        {
+          message:
+            'Use $getDocument(), ownerDocument, or getRootOwnerDocument() instead of document.* for Shadow DOM / iframe safety. See AGENTS.md.',
+          selector: 'MemberExpression[object.name="document"]',
+        },
+        {
+          message:
+            'Use getDefaultView() or getWindow() instead of window.* for Shadow DOM / iframe safety. See AGENTS.md.',
+          selector: 'MemberExpression[object.name="window"]',
+        },
+      ],
+    },
+  },
+
+  // Override: the /* @__PURE__ */ annotations on module-scope calls to the
+  // side-effect-free lexical factories are injected at build time by
+  // @lexical/compiler, so they do not belong in the sources. The
+  // rule is autofixable, which is how a branch written before the transform
+  // existed migrates: `pnpm run lint:fix`. Annotations on anything else
+  // (a third-party factory, a call inside a function body) are untouched.
+  {
+    files: ['packages/**', 'examples/**', 'dev-examples/**'],
+    ignores: ['packages/lexical-compiler/**'],
+    rules: {
+      '@lexical/internal/no-pure-annotation': ERROR,
+    },
+  },
+
+  // Keep extension source imports independent of the published bundle layout.
+  // The package build rewrites barrels and relative siblings to subpaths.
+  {
+    files: ['packages/**/src/**', 'examples/**', 'dev-examples/**'],
+    rules: {
+      'no-restricted-imports': [
+        ERROR,
+        {
+          patterns: [
+            {
+              group: ['@lexical/extension/*'],
+              message:
+                'Import from @lexical/extension in consumers, or use a relative import within that package. The build rewrites source imports to public subpaths.',
+            },
+          ],
+        },
+      ],
     },
   },
 

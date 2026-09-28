@@ -6,14 +6,6 @@
  *
  */
 
-import type {
-  LexicalCommand,
-  LexicalEditor,
-  LexicalEditorWithDispose,
-  NodeKey,
-} from 'lexical';
-import type {JSX} from 'react';
-
 import './ImageNode.css';
 
 import {useCollaborationContext} from '@lexical/react/LexicalCollaborationContext';
@@ -38,12 +30,17 @@ import {
   getActiveElement,
   KEY_ENTER_COMMAND,
   KEY_ESCAPE_COMMAND,
+  type LexicalCommand,
+  type LexicalEditor,
+  type LexicalEditorWithDispose,
   mergeRegister,
+  type NodeKey,
   registerEventListener,
   SELECTION_CHANGE_COMMAND,
 } from 'lexical';
 import * as React from 'react';
 import {
+  type JSX,
   Suspense,
   useCallback,
   useEffect,
@@ -52,7 +49,7 @@ import {
   useState,
 } from 'react';
 
-import {createWebsocketProvider} from '../collaboration';
+import {createWebsocketProvider, skipCollaborationInit} from '../collaboration';
 import {useSettings} from '../context/SettingsContext';
 import brokenImage from '../images/image-broken.svg';
 import TreeViewPlugin from '../plugins/TreeViewPlugin';
@@ -66,7 +63,7 @@ type ImageStatus =
 const imageCache = new Map<string, Promise<ImageStatus> | ImageStatus>();
 
 export const RIGHT_CLICK_IMAGE_COMMAND: LexicalCommand<MouseEvent> =
-  /* @__PURE__ */ createCommand('RIGHT_CLICK_IMAGE_COMMAND');
+  createCommand('RIGHT_CLICK_IMAGE_COMMAND');
 
 function DisableCaptionOnBlur({
   setShowCaption,
@@ -278,7 +275,7 @@ export default function ImageComponent({
   );
 
   const $onEnter = useCallback(
-    (event: KeyboardEvent) => {
+    (event: KeyboardEvent | null) => {
       const latestSelection = $getSelection();
       const buttonElem = buttonRef.current;
       if (
@@ -289,7 +286,9 @@ export default function ImageComponent({
         if (showCaption) {
           // Move focus into nested editor
           $setSelection(null);
-          event.preventDefault();
+          if (event !== null) {
+            event.preventDefault();
+          }
           caption.focus();
           return true;
         } else if (
@@ -298,7 +297,9 @@ export default function ImageComponent({
           // the shadow host when the editor is in a shadow root.
           buttonElem !== getActiveElement(buttonElem)
         ) {
-          event.preventDefault();
+          if (event !== null) {
+            event.preventDefault();
+          }
           buttonElem.focus();
           return true;
         }
@@ -395,12 +396,8 @@ export default function ImageComponent({
   }, [editor]);
   useEffect(() => {
     return mergeRegister(
-      editor.registerCommand<MouseEvent>(
-        CLICK_COMMAND,
-        onClick,
-        COMMAND_PRIORITY_LOW,
-      ),
-      editor.registerCommand<MouseEvent>(
+      editor.registerCommand(CLICK_COMMAND, onClick, COMMAND_PRIORITY_LOW),
+      editor.registerCommand(
         RIGHT_CLICK_IMAGE_COMMAND,
         onClick,
         COMMAND_PRIORITY_LOW,
@@ -498,7 +495,7 @@ export default function ImageComponent({
                 <CollaborationPlugin
                   id={caption.getKey()}
                   providerFactory={createWebsocketProvider}
-                  shouldBootstrap={true}
+                  shouldBootstrap={!skipCollaborationInit}
                   selectionHighlight={true}
                 />
               ) : null}
